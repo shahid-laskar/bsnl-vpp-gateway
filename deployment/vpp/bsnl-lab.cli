@@ -1,0 +1,28 @@
+comment { BSNL VPP lab dataplane fixture, executed by VPP itself at start-up }
+comment { via "unix { exec /etc/vpp/bsnl-lab.cli }". VPP re-applies it on every }
+comment { restart, so there is no race between vpp.service and vppctl oneshots. }
+comment { Requires the Linux veths from bsnl-vpp-lab-links.service to exist first. }
+comment { Interim (plan Step 1): these objects move to the controller in Step 4. }
+
+comment { af_packet attachments (was bsnl-vpp-afpacket) }
+create host-interface name vpp-access
+create host-interface name vpp-wan
+set interface state host-vpp-access up
+set interface state host-vpp-wan up
+
+comment { L3 fixture and portal route (was bsnl-vpp-l3-forwarding) }
+set interface ip address host-vpp-access 192.0.2.1/24
+set interface ip address host-vpp-wan 198.51.100.1/24
+ip route add 10.44.0.0/22 via 198.51.100.2 host-vpp-wan
+
+comment { QinQ tenant circuit, outer 0x8100/200 inner 0x8100/101 (was bsnl-vpp-qinq) }
+create sub-interfaces host-vpp-access 101 dot1q 200 inner-dot1q 101 exact-match
+set interface ip address host-vpp-access.101 10.9.101.1/24
+set interface state host-vpp-access.101 up
+
+comment { DHCP relay to Kea on br-wan (was bsnl-vpp-dhcp-proxy) }
+set dhcp proxy server 198.51.100.2 src-address 198.51.100.1
+
+comment { Pre-auth allowlist (was bsnl-vpp-preauth). First ACL on a fresh VPP is index 0. }
+set acl-plugin acl permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 80-80, permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 443-443, permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 1, permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 17 sport 0-65535 dport 53-53, permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 6 sport 0-65535 dport 53-53, permit src 0.0.0.0/0 dst 255.255.255.255/32 proto 17 sport 68-68 dport 67-67
+set acl-plugin interface host-vpp-access.101 input acl 0

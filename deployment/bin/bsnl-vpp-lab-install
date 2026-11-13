@@ -1,0 +1,66 @@
+#!/bin/sh
+# Install the BSNL VPP lab host configuration from this repository and verify
+# it (remediation plan Step 1). Idempotent. Run as root from the repo:
+#   sudo sh deployment/bin/bsnl-vpp-lab-install
+# A backup of every file it replaces is written to /root/bsnl-vpp-install-<ts>.tgz
+set -eu
+
+repo="$(cd "$(dirname "$0")/../.." && pwd)"
+[ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
+ts=$(date +%Y%m%dT%H%M%S)
+say() { printf '\n== %s\n' "$*"; }
+
+say "backup current host config"
+tar czf "/root/bsnl-vpp-install-$ts.tgz" --ignore-failed-read \
+  /etc/kea /etc/dnsmasq.d /etc/vpp /etc/systemd/system/bsnl-vpp-* \
+  /etc/systemd/system/vpp.service.d /usr/local/sbin/bsnl-vpp-* 2>/dev/null || true
+echo "/root/bsnl-vpp-install-$ts.tgz"
+
+say "remove leaked qualification fixtures (orphan dhclient, stale veths)"
+pkill -f 'dhclient.*(eth0\.200\.101|qinq101)' 2>/dev/null || true
+sleep 1
+for link in qdhcp-host qrange-host qdh-host dhcp-br dns-br p5q-host0 phase5-qinq-client-host; do
+  ip link del "$link" 2>/dev/null && echo "deleted $link" || true
+done
+for ns in $(ip netns list | awk '{print $1}' | grep -E '^(phase5|qdhcp|qrange|qdh|bsnl-qual)' || true); do
+  ip netns pids "$ns" | xargs -r kill -9 2>/dev/null || true
+  ip netns del "$ns" && echo "deleted netns $ns"
+done
+
+say "repair Kea / dnsmasq config ownership and stray backups"
+if [ -f /etc/kea/kea-dhcp4.conf ]; then
+  chown root:_kea /etc/kea/kea-dhcp4.conf
+  chmod 0640 /etc/kea/kea-dhcp4.conf
+fi
+find /etc/dnsmasq.d -maxdepth 1 -type f \( -name '*.bak' -o -name '.*' \) -print -delete
+[ -f /etc/dnsmasq.d/bsnl-vpp-lab.conf ] && chmod 0644 /etc/dnsmasq.d/bsnl-vpp-lab.conf
+install -d -o bsnl-vpp -g vpp -m 0750 /var/lib/bsnl-vpp-gateway/backups
+
+say "retire legacy vppctl oneshot units"
+for u in afpacket l3-forwarding qinq dhcp-proxy preauth; do
+  systemctl disable "bsnl-vpp-$u.service" 2>/dev/null || true
+  rm -f "/etc/systemd/system/bsnl-vpp-$u.service" "/usr/local/sbin/bsnl-vpp-$u"
+done
+
+say "install VPP startup exec, unit drop-ins and helpers"
+install -m 0644 "$repo/deployment/vpp/startup.conf.lab" /etc/vpp/startup.conf
+install -m 0644 "$repo/deployment/vpp/bsnl-lab.cli" /etc/vpp/bsnl-lab.cli
+install -d /etc/systemd/system/vpp.service.d
+install -m 0644 "$repo/deployment/systemd/vpp.service.d/20-bsnl-lab-links.conf" /etc/systemd/system/vpp.service.d/
+install -m 0644 "$repo/deployment/systemd/bsnl-vpp-portal-path.service" /etc/systemd/system/
+install -m 0644 "$repo/deployment/systemd/bsnl-vpp-controller.service" /etc/systemd/system/
+install -m 0755 "$repo/deployment/bin/bsnl-vpp-lab-check" /usr/local/sbin/bsnl-vpp-lab-check
+systemctl daemon-reload
+
+say "validate service configs before restart"
+kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
+dnsmasq --test
+
+say "restart services"
+systemctl reset-failed isc-kea-dhcp4-server dnsmasq bsnl-vpp-afpacket 2>/dev/null || true
+systemctl start bsnl-vpp-lab-links
+systemctl restart vpp
+systemctl restart isc-kea-dhcp4-server dnsmasq bsnl-vpp-portal-path bsnl-vpp-controller
+
+say "verify"
+/usr/local/sbin/bsnl-vpp-lab-check --wait 30

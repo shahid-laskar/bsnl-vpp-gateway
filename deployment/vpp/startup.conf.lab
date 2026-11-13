@@ -4,6 +4,7 @@ unix {
   full-coredump
   cli-listen /run/vpp/cli.sock
   gid vpp
+  exec /etc/vpp/bsnl-lab.cli
 }
 api-segment { gid vpp }
 socksvr { socket-name /run/vpp/api.sock }

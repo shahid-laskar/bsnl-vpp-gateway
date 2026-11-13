@@ -1,5 +1,5 @@
 [Unit]
-Description=BSNL VPP gateway controller (lab)
+Description=BSNL VPP gateway controller (Phase 3 lab)
 After=network-online.target vpp.service
 Wants=network-online.target
 
@@ -8,12 +8,17 @@ Type=simple
 User=bsnl-vpp
 Group=vpp
 WorkingDirectory=/opt/bsnl-vpp-gateway
-ExecStart=/opt/bsnl-vpp-gateway/.venv/bin/python -m controller.main --desired-state /opt/bsnl-vpp-gateway/config/lab/desired-state.json --store /var/lib/bsnl-vpp-gateway/desired-state.json
+# Secrets (BSNL_VPP_PORTAL_HMAC_SECRET, BSNL_VPP_CONTROLLER_TOKEN) live only in
+# this root-owned 0640 file, never in the repository.
+EnvironmentFile=-/etc/bsnl-vpp-gateway/controller.env
+ExecStart=/usr/bin/python3 -m controller.main --desired-state /opt/bsnl-vpp-gateway/config/lab/desired-state.json --store /var/lib/bsnl-vpp-gateway/controller.sqlite3 --audit /var/lib/bsnl-vpp-gateway/audit.jsonl --serve --listen 10.44.0.207 --port 8787 --tls-cert /etc/bsnl-vpp-gateway/tls/server.crt --tls-key /etc/bsnl-vpp-gateway/tls/server.key --tls-ca /etc/bsnl-vpp-gateway/tls/ca.crt
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/bsnl-vpp-gateway
 ReadWritePaths=/var/lib/bsnl-vpp-gateway
 
 [Install]

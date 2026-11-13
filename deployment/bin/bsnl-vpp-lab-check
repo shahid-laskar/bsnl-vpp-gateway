@@ -1,0 +1,52 @@
+#!/bin/sh
+# Read-only health check of the BSNL VPP VM lab. Run as root (vppctl needs the
+# vpp group, kea/dnsmasq tests need to read root-owned configs).
+#   bsnl-vpp-lab-check            one pass, exit 1 on any failure
+#   bsnl-vpp-lab-check --wait 30  retry until healthy or 30 s elapsed
+set -u
+
+wait_s=0
+[ "${1:-}" = "--wait" ] && wait_s="${2:-30}"
+
+check_once() {
+  fails=0
+  ok()   { printf 'ok   %s\n' "$1"; }
+  bad()  { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
+  t()    { name="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$name"; else bad "$name"; fi; }
+
+  for u in vpp bsnl-vpp-lab-links bsnl-vpp-portal-path isc-kea-dhcp4-server dnsmasq bsnl-vpp-controller; do
+    t "unit $u active" systemctl is-active --quiet "$u"
+  done
+
+  intf=$(vppctl show interface 2>/dev/null)
+  for i in host-vpp-access host-vpp-wan host-vpp-access.101; do
+    if printf '%s\n' "$intf" | awk -v n="$i" '$1==n {print $3}' | grep -qx up; then ok "vpp $i up"; else bad "vpp $i up"; fi
+  done
+  addr=$(vppctl show interface address 2>/dev/null)
+  t "vpp 10.9.101.1/24 on host-vpp-access.101" sh -c "printf '%s\n' \"\$1\" | grep -A2 '^host-vpp-access.101 ' | grep -q 'L3 10.9.101.1/24'" _ "$addr"
+  t "vpp 198.51.100.1/24 on host-vpp-wan" sh -c "printf '%s\n' \"\$1\" | grep -A2 '^host-vpp-wan ' | grep -q 'L3 198.51.100.1/24'" _ "$addr"
+  t "vpp route 10.44.0.0/22 via 198.51.100.2" sh -c "vppctl show ip fib 10.44.0.0/22 | grep -q 198.51.100.2"
+  t "vpp dhcp proxy -> 198.51.100.2" sh -c "vppctl show dhcp proxy | grep -q 198.51.100.2"
+  t "vpp pre-auth ACL attached input on host-vpp-access.101" sh -c "vppctl show acl-plugin interface | grep -A3 \"sw_if_index \$(vppctl show interface host-vpp-access.101 | awk 'NR==2{print \$2}'):\" | grep -q 'input acl'"
+
+  t "nft table ip bsnl_vpp_portal" nft list table ip bsnl_vpp_portal
+  t "kea config readable by _kea" runuser -u _kea -- test -r /etc/kea/kea-dhcp4.conf
+  t "kea config valid" kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
+  t "dnsmasq config valid" dnsmasq --test
+  t "no backup files in /etc/dnsmasq.d" sh -c '! ls /etc/dnsmasq.d/ | grep -qE "\.(bak|tmp)$|^\."'
+  # pgrep -x matches the process name only; "pgrep -f <pattern>" inside sh -c
+  # would match its own command line and always report a false orphan.
+  t "no orphan dhclient on lab VLANs" sh -c '! pgrep -a -x dhclient | grep -qE "eth0\.200\.101|qinq101"'
+  return "$fails"
+}
+
+deadline=$(( $(date +%s) + wait_s ))
+while :; do
+  out=$(check_once); rc=$?
+  if [ "$rc" -eq 0 ] || [ "$(date +%s)" -ge "$deadline" ]; then
+    printf '%s\n' "$out"
+    [ "$rc" -eq 0 ] && echo "HEALTHY" || echo "UNHEALTHY ($rc failures)"
+    exit $([ "$rc" -eq 0 ] && echo 0 || echo 1)
+  fi
+  sleep 2
+done

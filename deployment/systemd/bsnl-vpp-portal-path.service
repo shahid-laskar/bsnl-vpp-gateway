@@ -1,8 +1,8 @@
 [Unit]
 Description=BSNL VPP lab path to existing captive portal
-After=network-online.target bsnl-vpp-lab-links.service bsnl-vpp-l3-forwarding.service
+After=network-online.target bsnl-vpp-lab-links.service
 Wants=network-online.target
-Requires=bsnl-vpp-lab-links.service bsnl-vpp-l3-forwarding.service
+Requires=bsnl-vpp-lab-links.service
 
 [Service]
 Type=oneshot

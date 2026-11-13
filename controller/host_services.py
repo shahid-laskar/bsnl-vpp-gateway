@@ -4,8 +4,10 @@ from dataclasses import dataclass
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path
 import shutil
+import stat
 import tempfile
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -118,23 +120,50 @@ def render_dnsmasq_config(plans: list[HostServicePlan], captive_hosts: list[str]
     return "\n".join(lines) + "\n"
 
 
-class AtomicConfigApplier:
-    """Write a validated config with a recoverable backup and atomic replace."""
+DEFAULT_BACKUP_DIR = Path("/var/lib/bsnl-vpp-gateway/backups")
+DEFAULT_NEW_FILE_MODE = 0o644
 
-    def __init__(self, validator=None):
+
+class AtomicConfigApplier:
+    """Write a validated config with a recoverable backup and atomic replace.
+
+    The replacement keeps the existing target's owner, group and mode. Daemons
+    such as Kea 3.0 run unprivileged (``_kea``) and fail to start if their
+    config silently becomes ``root:root 0600`` (the ``NamedTemporaryFile``
+    default). Backups are written to ``backup_dir`` and never next to the
+    target, because a ``.bak`` inside a ``conf-dir`` such as ``/etc/dnsmasq.d``
+    is loaded by the daemon as live configuration.
+    """
+
+    def __init__(self, validator=None, backup_dir: str | Path = DEFAULT_BACKUP_DIR):
         self.validator = validator or (lambda path: None)
+        self.backup_dir = Path(backup_dir)
+
+    def backup_path(self, target_path: Path) -> Path:
+        flattened = str(target_path).strip("/").replace("/", "__")
+        return self.backup_dir / f"{flattened}.bak"
 
     def apply(self, target: str | Path, content: str) -> Path | None:
         target_path = Path(target)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         backup = None
-        if target_path.exists():
-            backup = target_path.with_name(target_path.name + ".bak")
+        existing = target_path.stat() if target_path.exists() else None
+        if existing is not None:
+            self.backup_dir.mkdir(parents=True, exist_ok=True)
+            backup = self.backup_path(target_path)
             shutil.copy2(target_path, backup)
         with tempfile.NamedTemporaryFile("w", dir=target_path.parent, prefix=f".{target_path.name}.", delete=False) as handle:
             handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
             temporary = Path(handle.name)
         try:
+            if existing is not None:
+                os.chmod(temporary, stat.S_IMODE(existing.st_mode))
+                if (existing.st_uid, existing.st_gid) != (os.geteuid(), os.getegid()):
+                    os.chown(temporary, existing.st_uid, existing.st_gid)
+            else:
+                os.chmod(temporary, DEFAULT_NEW_FILE_MODE)
             self.validator(temporary)
             temporary.replace(target_path)
         except Exception:
@@ -146,8 +175,9 @@ class AtomicConfigApplier:
 class ServiceReconciler:
     """Apply one host-service config and roll back if daemon reload fails."""
 
-    def __init__(self, runner: Callable[[Sequence[str]], None] | None = None):
+    def __init__(self, runner: Callable[[Sequence[str]], None] | None = None, backup_dir: str | Path = DEFAULT_BACKUP_DIR):
         self.runner = runner or self._subprocess_runner
+        self.backup_dir = Path(backup_dir)
 
     def apply_and_reload(self, target: str | Path, content: str, validate: Sequence[str], reload: Sequence[str]) -> Path | None:
         target_path = Path(target)
@@ -156,7 +186,7 @@ class ServiceReconciler:
             if not any(item.endswith("=") for item in validate):
                 command.append(str(path))
             self.runner(command)
-        applier = AtomicConfigApplier(validate_temp)
+        applier = AtomicConfigApplier(validate_temp, self.backup_dir)
         backup = applier.apply(target_path, content)
         try:
             self.runner(list(reload))
