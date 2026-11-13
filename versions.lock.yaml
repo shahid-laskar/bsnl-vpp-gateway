@@ -1,6 +1,6 @@
-schema_version: 1
+schema_version: 2
 status: provisional-lab
-captured_at: "2026-11-11T00:00:00Z"
+captured_at: "2026-11-13T12:00:00Z"
 host:
   os: "Ubuntu 24.04.3 LTS"
   kernel: "6.8.0-149-generic"
@@ -9,16 +9,29 @@ host:
 vpp:
   release: "26.10-release"
   package_source: "https://packagecloud.io/fdio/release"
-  packages: [vpp, vpp-plugin-core, vpp-plugin-dpdk, python3-vpp-api]
+  packages:
+    vpp: "26.10-release"
+    vpp-plugin-core: "26.10-release"
+    vpp-plugin-dpdk: "26.10-release"
+    python3-vpp-api: "26.10-release"
+    libvppinfra: "26.10-release"
   dataplane_mode: af_packet-lab
   dpdk_binding: disabled
-  bundled_dpdk: "OPEN-R: record after VPP installation with show dpdk version"
+  bundled_dpdk: "not recorded: dpdk_plugin disabled in the VM lab (DEFERRED-HW)"
+  api_crc_snapshot: "artifacts/api-crc-26.10.json"
 services:
-  python: "3.12"
-  kea: deferred
-  resolver: deferred
-  accounting_collector: deferred
+  kea: "isc-kea-dhcp4-server 3.0.5-isc20261026134027"
+  resolver: "dnsmasq 2.91-0ubuntu0.24.04.2 (lab fixture, ADR-006)"
+  accounting_collector: "not deployed (P7)"
+controller:
+  python: "3.12.3 (system)"
+  libraries:
+    jsonschema: "4.10.3 (python3-jsonschema 4.10.3-2ubuntu1)"
+    vpp_papi: "python3-vpp-api 26.10-release"
+    pytest: "7.4.4 (tests only)"
+  store: "SQLite WAL (ADR-009)"
+  git_commit: "see git log of the deployed branch"
 notes:
   - "Do not install Ubuntu dpdk packages for the dataplane."
   - "Do not bind ens18, ens19 or ens20 to vfio-pci in this VM lab."
-  - "Re-capture this manifest after package installation and before feature qualification."
+  - "Re-capture this manifest and the CRC snapshot after any package change."

@@ -1,0 +1,28 @@
+# cross-repo contract E2E (portal client -> controller, mTLS + HMAC), 2026-11-13T11:04:47Z
+{
+ "activate": {
+  "reason": "activated",
+  "authorized": true,
+  "changed": true,
+  "dataplane_enforced": false,
+  "contract_version": "v1"
+ },
+ "activate_retry": {
+  "reason": "idempotent_replay",
+  "authorized": true,
+  "changed": false,
+  "dataplane_enforced": false,
+  "contract_version": "v1"
+ },
+ "deactivate": {
+  "reason": "logout",
+  "authorized": false,
+  "changed": true,
+  "dataplane_enforced": false,
+  "contract_version": "v1"
+ },
+ "wrong_secret": "rejected status=401 retryable=False",
+ "cert_not_allowlisted": "rejected status=401"
+}
+audit events: 3
+E2E PASS

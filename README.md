@@ -1,26 +1,27 @@
 # BSNL VPP Gateway
 
-Lab implementation for `docs/vpp/FINAL_IMPLEMENTATION_PLAN.md`, deployed on
-an Ubuntu VM with three hypervisor-backed Linux bridge attachments.
+Lab implementation of the portal repo's `docs/vpp/FINAL_IMPLEMENTATION_PLAN.md`
+on an Ubuntu VM (VPP 26.10 over `af_packet`, DPDK disabled).
 
 | Role | Guest interface | Ownership |
 |---|---|---|
 | Management | `ens18` | Linux / SSH / controller |
-| Subscriber access | `ens19` | Linux bridge attachment, VPP `af_packet` |
-| Upstream/WAN | `ens20` | Linux bridge attachment, VPP `af_packet` |
+| Subscriber access | `ens19` | Linux bridge, VPP `af_packet` |
+| Upstream/WAN | `ens20` | Linux bridge, VPP `af_packet` |
 
-The management interface is never listed in a VPP DPDK device stanza. Physical
-NIC binding, IOMMU/VFIO, hugepages, CPU isolation, RSS, and production DPDK
-tuning are deferred until hardwired NICs are integrated.
+Contents:
 
-The completed lab gates include persistent af_packet attachment, L3
-forwarding, exact-match QinQ, DHCP relay to Kea, RFC 8910 DHCP option 114,
-and a Linux resolver fixture on `br-wan`, plus a lab pre-auth ACL. The existing
-HTTP/HTTPS captive portal is integrated; subscriber enforcement and the
-controller/Django session workflow are not implemented yet.
+- `controller/`: desired state, contract-v1 API (mTLS + HMAC), SQLite store
+  and audit, subscriber lifecycle, CRC-pinned VPP adapter, QinQ provisioning,
+  tenant ACL policy, host-service rendering, lab qualification and bypass tools.
+- `deployment/`: VPP startup profile and `bsnl-lab.cli`, systemd units, Kea,
+  dnsmasq, nftables, install and health-check scripts.
+- `config/`: JSON schemas (desired state, API v1), golden contract vectors,
+  lab topology, desired state and host-service settings.
+- `artifacts/`: API CRC snapshot and test reports.
 
-For the complete implementation record, configuration inventory, validation
-evidence, and production transition gates, see
-[`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md).
+Status, evidence and open gates: [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md).
+Operations: [`docs/LAB_RUNBOOK.md`](docs/LAB_RUNBOOK.md). Decisions: `docs/ADR-*.md`.
 
-Operational procedures are in [`docs/LAB_RUNBOOK.md`](docs/LAB_RUNBOOK.md).
+Not production-ready: no NAT/IPDR, QoS, HA, performance or hardware
+qualification yet.
