@@ -12,7 +12,7 @@ from .host_services import ServiceReconciler, host_service_plans, render_dnsmasq
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render or apply BSNL VPP host-service configuration")
     parser.add_argument("--desired-state", required=True)
-    parser.add_argument("--services", required=True, help="JSON file containing relay_address, dns_address, portal_url, and lease_lifetime_seconds")
+    parser.add_argument("--services", required=True, help="JSON file: relay_address, dns_address, portal_url, portal_address, captive_hosts, local_names, lease_lifetime_seconds")
     parser.add_argument("--kea-target", default="/etc/kea/kea-dhcp4.conf")
     parser.add_argument("--dnsmasq-target", default="/etc/dnsmasq.d/bsnl-vpp-lab.conf")
     parser.add_argument("--backup-dir", default="/var/lib/bsnl-vpp-gateway/backups")
@@ -22,7 +22,7 @@ def main() -> int:
     services: dict[str, Any] = load_json(args.services)
     plans = host_service_plans(desired, services)
     kea = render_kea_config(plans)
-    dnsmasq = render_dnsmasq_config(plans, services.get("captive_hosts", ["portal.lab", "wifi.bsnl.co.in"]))
+    dnsmasq = render_dnsmasq_config(plans, services)
     if not args.apply:
         print(json.dumps({"mode": "dry-run", "kea_bytes": len(kea), "dnsmasq_bytes": len(dnsmasq), "tenants": len(plans)}, indent=2))
         return 0

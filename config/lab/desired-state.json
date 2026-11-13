@@ -10,17 +10,30 @@
       "outer_tpid": "0x8100",
       "outer_vlan": 200,
       "inner_vlan": 101,
-      "vrf_id": 101,
+      "vrf_id": 0,
       "gateway_ip": "10.9.101.1/24",
-      "dhcp_ranges": [{"start": "10.9.101.5", "end": "10.9.101.105"}],
+      "dhcp_ranges": [
+        {
+          "start": "10.9.101.5",
+          "end": "10.9.101.105"
+        }
+      ],
       "nat_pool_ref": null,
       "pre_auth_policy_ref": "lab-preauth-v1",
       "mac_enforcement": "log_only",
-      "admin_state": "enabled"
+      "admin_state": "enabled",
+      "kea_subnet_id": 101,
+      "parent_interface": "host-vpp-access"
     }
   ],
   "subscribers": [],
   "nat_pools": [],
-  "policies": {"lab-preauth-v1": {"mode": "allowlist", "dataplane_apply": false}},
+  "policies": {
+    "lab-preauth-v1": {
+      "mode": "allowlist",
+      "dataplane_apply": false,
+      "note": "Static pre-auth ACL applied by deployment/vpp/bsnl-lab.cli until remediation step 5."
+    }
+  },
   "qos_profiles": {}
 }

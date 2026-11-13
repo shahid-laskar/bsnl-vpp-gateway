@@ -12,7 +12,7 @@ from typing import Any
 from .contract import CONTRACT_VERSION, ContractError, ReplayCache, validate_request, verify_signature
 from .reconcile import LabAdapter
 from .store import DesiredStateStore
-from .subscribers import SubscriberLifecycle
+from .subscribers import StaleEventError, SubscriberLifecycle
 
 LOG = logging.getLogger("bsnl_vpp.api")
 MAX_BODY_BYTES = 1024 * 1024
@@ -113,13 +113,18 @@ class SubscriberApiHandler(BaseHTTPRequestHandler):
             validate_request(definition, body)
             lifecycle = self.server.lifecycle
             if definition == "activateRequest":
-                result = lifecycle.activate(body["subscriber"], idempotency_key=idempotency_key, operation_id=body["operation_id"])
+                result = lifecycle.activate(body["subscriber"], idempotency_key=idempotency_key, operation_id=body["operation_id"], actor=actor)
             else:
-                result = lifecycle.deactivate(body["session_key"], idempotency_key=idempotency_key, operation_id=body["operation_id"], reason=body.get("reason", "portal_deactivation"))
+                result = lifecycle.deactivate(body["session_key"], idempotency_key=idempotency_key, operation_id=body["operation_id"], reason=body.get("reason", "portal_deactivation"), actor=actor)
+        except StaleEventError as exc:
+            self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+            return
         except (TypeError, ValueError, KeyError, json.JSONDecodeError, ContractError) as exc:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
-        enforced = bool(self.server.adapter.capabilities().get("writes_enabled", False))
+        # Only subscriber policy enforcement in VPP makes a session usable;
+        # interface writes alone (writes_enabled) do not.
+        enforced = bool(self.server.adapter.capabilities().get("subscriber_policy_enforced", False))
         self._json(HTTPStatus.OK, {**result.__dict__, "contract_version": CONTRACT_VERSION, "dataplane_enforced": enforced})
 
     def log_message(self, *_args: Any) -> None:
@@ -127,15 +132,17 @@ class SubscriberApiHandler(BaseHTTPRequestHandler):
 
 
 class SubscriberApiServer(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], store_path: str, audit_path: str) -> None:
+    daemon_threads = True
+
+    def __init__(self, address: tuple[str, int], store_path: str, audit_path: str | None = None, *, adapter: Any = None, lifecycle: SubscriberLifecycle | None = None) -> None:
         super().__init__(address, SubscriberApiHandler)
-        self.lifecycle = SubscriberLifecycle(DesiredStateStore(store_path), audit_path)
-        self.adapter = LabAdapter()
+        self.lifecycle = lifecycle or SubscriberLifecycle(DesiredStateStore(store_path, audit_path))
+        self.adapter = adapter or LabAdapter()
         self.replay_cache = ReplayCache()
 
 
-def serve(listen: str = "127.0.0.1", port: int = 8787, store_path: str = "var/controller.sqlite3", audit_path: str = "var/audit.jsonl", tls_cert: str | None = None, tls_key: str | None = None, tls_ca: str | None = None) -> None:
-    server = SubscriberApiServer((listen, port), store_path, audit_path)
+def serve(listen: str = "127.0.0.1", port: int = 8787, store_path: str = "var/controller.sqlite3", audit_path: str | None = "var/audit.jsonl", tls_cert: str | None = None, tls_key: str | None = None, tls_ca: str | None = None, *, adapter: Any = None, lifecycle: SubscriberLifecycle | None = None) -> None:
+    server = SubscriberApiServer((listen, port), store_path, audit_path, adapter=adapter, lifecycle=lifecycle)
     if any((tls_cert, tls_key, tls_ca)):
         if not all((tls_cert, tls_key, tls_ca)):
             raise ValueError("tls_cert, tls_key, and tls_ca must be provided together")

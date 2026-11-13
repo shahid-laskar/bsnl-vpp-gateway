@@ -16,7 +16,7 @@ SECRET = "portal-shared-secret"
 
 @pytest.fixture
 def server(tmp_path, monkeypatch):
-    store = DesiredStateStore(tmp_path / "desired.json")
+    store = DesiredStateStore(tmp_path / "state.sqlite3")
     store.write({
         "schema_version": 2,
         "gateway_revision": 1,
@@ -25,7 +25,7 @@ def server(tmp_path, monkeypatch):
     })
     monkeypatch.setenv("BSNL_VPP_CONTROLLER_TOKEN", "test-token")
     monkeypatch.delenv("BSNL_VPP_PORTAL_HMAC_SECRET", raising=False)
-    instance = SubscriberApiServer(("127.0.0.1", 0), str(tmp_path / "desired.json"), str(tmp_path / "audit.jsonl"))
+    instance = SubscriberApiServer(("127.0.0.1", 0), str(tmp_path / "state.sqlite3"), str(tmp_path / "audit.jsonl"))
     threading.Thread(target=instance.serve_forever, daemon=True).start()
     yield instance
     instance.shutdown()
@@ -183,3 +183,14 @@ def test_missing_or_malformed_nonce_is_rejected(server, monkeypatch):
                    "X-BSNL-Timestamp": ts, "X-BSNL-Nonce": nonce,
                    "X-BSNL-Signature": sign(SECRET, ts, nonce, "POST", "/v1/subscribers/activate", "n", raw)}
         assert raw_request(server, "POST", "/v1/subscribers/activate", raw, headers)[0] == 401, nonce
+
+
+def test_activation_after_logout_returns_409_and_audit_names_actor(server):
+    headers = {"Idempotency-Key": "a-1"}
+    assert request(server, "POST", "/v1/subscribers/activate", activation(), headers)[0] == 200
+    body = {"operation_id": "op-2", "session_key": f"{TENANT}/10.9.101.5", "reason": "logout"}
+    assert request(server, "POST", "/v1/subscribers/deactivate", body, {"Idempotency-Key": "d-1"})[0] == 200
+    status, payload = request(server, "POST", "/v1/subscribers/activate", activation(), {"Idempotency-Key": "a-late"})
+    assert status == 409 and "already ended" in payload["error"]
+    events = server.lifecycle.store.audit_events()
+    assert {e["actor"] for e in events if e.get("event", "").startswith("subscriber.")} == {"token"}

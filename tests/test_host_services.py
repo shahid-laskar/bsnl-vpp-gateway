@@ -14,7 +14,8 @@ def tenant(**changes):
 
 
 def services(**changes):
-    value = {"relay_address": "198.51.100.1", "dns_address": "198.51.100.2", "portal_url": "https://wifi.bsnl.co.in/portal/login/"}
+    value = {"relay_address": "198.51.100.1", "dns_address": "198.51.100.2", "portal_url": "https://wifi.bsnl.co.in/portal/login/",
+             "portal_address": "10.44.0.209", "captive_hosts": ["wifi.bsnl.co.in"], "local_names": {"portal.lab": "198.51.100.2"}}
     value.update(changes)
     return value
 
@@ -40,7 +41,8 @@ def test_rendered_host_service_payloads_are_deterministic():
     kea = render_kea_subnet(plan)
     assert kea["subnet"] == "10.9.101.0/24"
     assert kea["pools"] == [{"pool": "10.9.101.5-10.9.101.105"}]
-    assert render_dns_records(plan, ["portal.lab", "wifi.bsnl.co.in"])["portal.lab"] == "198.51.100.2"
+    assert render_dns_records(services())["portal.lab"] == "198.51.100.2"
+    assert render_dns_records(services())["wifi.bsnl.co.in"] == "10.44.0.209"
 
 
 def test_atomic_config_apply_backups_and_rolls_back_on_validation_failure(tmp_path):
@@ -63,7 +65,7 @@ def test_rendered_configs_include_expected_services():
     assert "kea4-ctrl-socket" in kea
     assert "/var/lib/kea/kea-leases4.csv" in kea
     assert "/var/log/kea/kea-dhcp4.log" in kea
-    dnsmasq = render_dnsmasq_config([plan], ["portal.lab"])
+    dnsmasq = render_dnsmasq_config([plan], services())
     assert "address=/portal.lab/198.51.100.2" in dnsmasq
     assert "cache-size=1000" in dnsmasq
     assert "log-queries" in dnsmasq

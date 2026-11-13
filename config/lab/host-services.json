@@ -1,0 +1,20 @@
+{
+  "relay_address": "198.51.100.1",
+  "dns_address": "198.51.100.2",
+  "portal_url": "https://wifi.bsnl.co.in/portal/login/",
+  "portal_address": "10.44.0.209",
+  "captive_hosts": [
+    "wifi.bsnl.co.in",
+    "connectivitycheck.gstatic.com",
+    "connectivitycheck.android.com",
+    "captive.apple.com",
+    "www.msftconnecttest.com",
+    "msftconnecttest.com",
+    "www.msftncsi.com",
+    "msftncsi.com"
+  ],
+  "local_names": {
+    "portal.lab": "198.51.100.2"
+  },
+  "lease_lifetime_seconds": 300
+}

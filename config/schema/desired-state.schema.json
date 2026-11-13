@@ -26,7 +26,7 @@
         "outer_vlan": {"type": "integer", "minimum": 1, "maximum": 4094},
         "inner_vlan": {"type": "integer", "minimum": 1, "maximum": 4094},
         "vrf_id": {"type": "integer", "minimum": 0}, "gateway_ip": {"type": "string"},
-        "dhcp_ranges": {"type": "array"}, "nat_pool_ref": {"type": ["string", "null"]},
+        "dhcp_ranges": {"type": "array"}, "kea_subnet_id": {"type": "integer", "minimum": 1, "maximum": 2147483647}, "nat_pool_ref": {"type": ["string", "null"]},
         "pre_auth_policy_ref": {"type": ["string", "null"]}, "mac_enforcement": {"type": "string"},
         "admin_state": {"enum": ["enabled", "disabled"]}
       }

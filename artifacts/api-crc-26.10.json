@@ -1,0 +1,22 @@
+{
+  "vpp_release": "26.10",
+  "source": "/usr/share/vpp/api",
+  "messages": {
+    "acl_dump": "acl_dump_ef34fea4",
+    "acl_interface_list_dump": "acl_interface_list_dump_f9e6675e",
+    "control_ping": "control_ping_51077d14",
+    "create_subif": "create_subif_790ca755",
+    "delete_subif": "delete_subif_f9e6675e",
+    "ip_address_dump": "ip_address_dump_2d033de4",
+    "ip_table_add_del_v2": "ip_table_add_del_v2_14e5081f",
+    "ip_table_dump": "ip_table_dump_51077d14",
+    "show_version": "show_version_51077d14",
+    "sw_interface_add_del_address": "sw_interface_add_del_address_5463d73b",
+    "sw_interface_dump": "sw_interface_dump_aa610c27",
+    "sw_interface_get_table": "sw_interface_get_table_2d033de4",
+    "sw_interface_set_flags": "sw_interface_set_flags_f5aec1b8",
+    "sw_interface_set_mtu": "sw_interface_set_mtu_5cbe85e5",
+    "sw_interface_set_table": "sw_interface_set_table_df42a577",
+    "sw_interface_tag_add_del": "sw_interface_tag_add_del_426f8bc1"
+  }
+}

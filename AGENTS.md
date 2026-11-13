@@ -103,6 +103,31 @@ kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
 dnsmasq --test
 ```
 
+## Controller (remediation step 4)
+
+- Store: SQLite only (`controller/store.py`); state, idempotency record and
+  audit event of an operation commit in one transaction. Audit rows carry
+  `ts`, `actor` (`cert:<CN>` / `token` / `controller` / `config`), `event` and
+  `gateway_revision`; `--audit` is a JSONL mirror.
+- Topology vs subscribers (`controller/state.py`): the desired-state file owns
+  tenants/pools/policies and is merged at boot; subscribers persist across
+  restarts and topology edits. Disabling/removing a tenant deactivates its
+  subscribers (audited).
+- `Reconciler` thread (`--reconcile-interval`, default 30 s): expires
+  subscribers, prunes idempotency records (7 days), re-applies desired state.
+- A late/replayed activation for a portal session that already ended returns
+  409 (`StaleEventError`); a new login must use a new session_id.
+- `VppApiAdapter` (`--observe-vpp`, `--enable-vpp-writes`): CRC-checked
+  against `artifacts/api-crc-26.10.json` (regenerate with
+  `tools/api_crc_snapshot.py` on every VPP upgrade). Writes are off by default.
+  `subscriber_policy_enforced` stays false until step 5, so the portal keeps
+  sessions out of `fully_active`.
+- Decision (lab, until D-06): tenants use VRF 0 (shared FIB). The live
+  sub-interface and the portal route are in table 0; the earlier desired state
+  said VRF 101, which would have isolated subscribers from the portal once
+  writes were enabled. Kea subnet id 101 is pinned (`kea_subnet_id`) to keep
+  the existing lease file valid.
+
 ## Next work
 
 1. Done (remediation step 2): the Django portal client speaks contract v1;

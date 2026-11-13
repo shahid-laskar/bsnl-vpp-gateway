@@ -28,6 +28,7 @@ class HostServicePlan:
     dns_address: ipaddress.IPv4Address
     lease_lifetime_seconds: int
     portal_url: str
+    kea_subnet_id: int
 
     @property
     def dhcp_key(self) -> str:
@@ -61,17 +62,46 @@ def host_service_plan(tenant: dict[str, Any], services: dict[str, Any]) -> HostS
     portal_url = services.get("portal_url", "")
     if not isinstance(portal_url, str) or not portal_url.startswith("https://"):
         raise HostServiceValidationError("portal_url must use HTTPS")
-    return HostServicePlan(tenant["tenant_key"], subnet, gateway, pool_start, pool_end, relay, dns, lifetime, portal_url)
+    return HostServicePlan(tenant["tenant_key"], subnet, gateway, pool_start, pool_end, relay, dns, lifetime, portal_url, kea_subnet_id(tenant))
+
+
+def kea_subnet_id(tenant: dict[str, Any]) -> int:
+    """Explicit ``kea_subnet_id`` or a stable 31-bit hash of the tenant key.
+
+    The old rule used the inner VLAN alone, so two tenants with the same inner
+    VLAN under different outer VLANs got the same Kea subnet id (C-7). Kea
+    keys leases by subnet id, so pin it explicitly for existing tenants.
+    """
+    explicit = tenant.get("kea_subnet_id")
+    if explicit is not None:
+        if isinstance(explicit, bool) or not isinstance(explicit, int) or not 1 <= explicit <= 0x7FFFFFFF:
+            raise HostServiceValidationError("kea_subnet_id must be an integer from 1 to 2147483647")
+        return explicit
+    return (int.from_bytes(hashlib.sha256(tenant["tenant_key"].encode()).digest()[:4], "big") & 0x7FFFFFFF) or 1
 
 
 def host_service_plans(desired_state: dict[str, Any], services: dict[str, Any]) -> list[HostServicePlan]:
-    return [host_service_plan(tenant, services) for tenant in desired_state.get("tenants", []) if tenant.get("admin_state", "enabled") == "enabled"]
+    plans = [host_service_plan(tenant, services) for tenant in desired_state.get("tenants", []) if tenant.get("admin_state", "enabled") == "enabled"]
+    seen: dict[int, str] = {}
+    for plan in plans:
+        if plan.kea_subnet_id in seen:
+            raise HostServiceValidationError(f"Kea subnet id {plan.kea_subnet_id} used by both {seen[plan.kea_subnet_id]} and {plan.tenant_key}")
+        seen[plan.kea_subnet_id] = plan.tenant_key
+    return plans
+
+
+def lease_timers(lifetime: int) -> tuple[int, int]:
+    """RFC 2131 defaults: T1 = 0.5 x lease, T2 = 0.875 x lease."""
+    return lifetime // 2, (lifetime * 7) // 8
 
 
 def render_kea_subnet(plan: HostServicePlan) -> dict[str, Any]:
     return {
-        "id": int(plan.tenant_key.rsplit("/", 1)[-1]) if plan.tenant_key.rsplit("/", 1)[-1].isdigit() else int.from_bytes(hashlib.sha256(plan.tenant_key.encode()).digest()[:4], "big") & 0x7FFFFFFF,
+        "id": plan.kea_subnet_id,
         "subnet": str(plan.subnet),
+        "valid-lifetime": plan.lease_lifetime_seconds,
+        "renew-timer": lease_timers(plan.lease_lifetime_seconds)[0],
+        "rebind-timer": lease_timers(plan.lease_lifetime_seconds)[1],
         "relay": {"ip-addresses": [str(plan.relay_address)]},
         "pools": [{"pool": f"{plan.pool_start}-{plan.pool_end}"}],
         "option-data": [
@@ -82,8 +112,17 @@ def render_kea_subnet(plan: HostServicePlan) -> dict[str, Any]:
     }
 
 
-def render_dns_records(plan: HostServicePlan, captive_hosts: list[str]) -> dict[str, str]:
-    return {host: str(plan.dns_address if host == "portal.lab" else "10.44.0.209") for host in captive_hosts}
+def render_dns_records(services: dict[str, Any]) -> dict[str, str]:
+    """Captive DNS overrides: ``captive_hosts`` -> portal_address, plus explicit
+    ``local_names`` (name -> address). Nothing is hard-coded (C-7)."""
+    try:
+        portal = str(ipaddress.ip_address(services["portal_address"]))
+    except (KeyError, ValueError) as exc:
+        raise HostServiceValidationError("services.portal_address must be an IP address") from exc
+    records = {host: portal for host in services.get("captive_hosts", [])}
+    for name, address in (services.get("local_names") or {}).items():
+        records[name] = str(ipaddress.ip_address(address))
+    return records
 
 
 def render_kea_config(plans: list[HostServicePlan], interface: str = "br-wan") -> str:
@@ -93,18 +132,21 @@ def render_kea_config(plans: list[HostServicePlan], interface: str = "br-wan") -
         "control-socket": {"socket-type": "unix", "socket-name": "kea4-ctrl-socket"},
         "lease-database": {"type": "memfile", "name": "/var/lib/kea/kea-leases4.csv", "lfc-interval": 60},
         "valid-lifetime": plans[0].lease_lifetime_seconds if plans else 300,
-        "renew-timer": 150,
-        "rebind-timer": 240,
+        "renew-timer": lease_timers(plans[0].lease_lifetime_seconds if plans else 300)[0],
+        "rebind-timer": lease_timers(plans[0].lease_lifetime_seconds if plans else 300)[1],
         "subnet4": subnets,
         "loggers": [{"name": "kea-dhcp4", "output-options": [{"output": "/var/log/kea/kea-dhcp4.log"}], "severity": "INFO"}],
     }}
     return json.dumps(document, indent=2) + "\n"
 
 
-def render_dnsmasq_config(plans: list[HostServicePlan], captive_hosts: list[str]) -> str:
+def render_dnsmasq_config(plans: list[HostServicePlan], services: dict[str, Any]) -> str:
     if not plans:
         raise HostServiceValidationError("at least one enabled tenant is required for dnsmasq")
-    dns_address = str(plans[0].dns_address)
+    addresses = {str(plan.dns_address) for plan in plans}
+    if len(addresses) != 1:
+        raise HostServiceValidationError(f"all tenants must share one resolver address in the lab design, got {sorted(addresses)}")
+    dns_address = addresses.pop()
     lines = [
         "interface=br-wan",
         "bind-interfaces",
@@ -114,7 +156,7 @@ def render_dnsmasq_config(plans: list[HostServicePlan], captive_hosts: list[str]
         "domain-needed",
         "bogus-priv",
     ]
-    for host, address in render_dns_records(plans[0], captive_hosts).items():
+    for host, address in sorted(render_dns_records(services).items()):
         lines.append(f"address=/{host}/{address}")
     lines.append("log-queries")
     return "\n".join(lines) + "\n"
