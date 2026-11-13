@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import sqlite3
 import tempfile
@@ -26,6 +27,7 @@ class DesiredStateStore:
         connection.execute("PRAGMA synchronous=FULL")
         connection.execute("CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK (id=1), payload TEXT NOT NULL)")
         connection.execute("CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT NOT NULL)")
+        connection.execute("CREATE TABLE IF NOT EXISTS idempotency (idempotency_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, result TEXT NOT NULL)")
         connection.commit()
         return connection
 
@@ -69,3 +71,42 @@ class DesiredStateStore:
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         with audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+    def get_idempotency(self, key: str) -> dict[str, str] | None:
+        if self.sqlite:
+            with self._connect() as connection:
+                row = connection.execute("SELECT request_hash, result FROM idempotency WHERE idempotency_key=?", (key,)).fetchone()
+            return {"request_hash": row[0], "result": row[1]} if row else None
+        path = self.path.with_suffix(self.path.suffix + ".idempotency.json")
+        if not path.exists():
+            return None
+        with path.open(encoding="utf-8") as handle:
+            return json.load(handle).get(key)
+
+    def put_idempotency(self, key: str, request_hash: str, result: dict[str, Any]) -> None:
+        encoded = json.dumps(result, sort_keys=True)
+        if self.sqlite:
+            with self._connect() as connection:
+                connection.execute("INSERT INTO idempotency(idempotency_key,request_hash,result) VALUES(?,?,?)", (key, request_hash, encoded))
+                connection.commit()
+            return
+        path = self.path.with_suffix(self.path.suffix + ".idempotency.json")
+        records = {}
+        if path.exists():
+            with path.open(encoding="utf-8") as handle:
+                records = json.load(handle)
+        if key in records:
+            return
+        records[key] = {"request_hash": request_hash, "result": encoded}
+        temporary = path.with_name(f".{path.name}.tmp")
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(records, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+
+
+def request_hash(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(payload).hexdigest()

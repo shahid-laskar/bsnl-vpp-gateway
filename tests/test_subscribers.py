@@ -18,3 +18,17 @@ def test_expiry_deactivates_without_authorization(tmp_path):
 def test_activation_rejects_disabled_tenant(tmp_path):
     service, store = lifecycle(tmp_path); current = store.read(); current["tenants"][0]["admin_state"] = "disabled"; store.write(current)
     with pytest.raises(ValueError, match="missing or disabled"): service.activate(subscriber(datetime.now(timezone.utc) + timedelta(minutes=5)), idempotency_key="k1", operation_id="op1")
+
+
+def test_idempotency_key_conflict_is_rejected(tmp_path):
+    service, _ = lifecycle(tmp_path)
+    first = subscriber(datetime.now(timezone.utc) + timedelta(minutes=5))
+    service.activate(first, idempotency_key="same-key", operation_id="op1")
+    first["subscriber_id"] = "different-user"
+    with pytest.raises(ValueError, match="different request"):
+        service.activate(first, idempotency_key="same-key", operation_id="op2")
+
+def test_deactivation_requires_session_key(tmp_path):
+    service, _ = lifecycle(tmp_path)
+    with pytest.raises(ValueError, match="session_key is required"):
+        service.deactivate("", idempotency_key="k1", operation_id="op1")

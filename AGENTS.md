@@ -46,16 +46,24 @@ documented `0x8100` lab fixture unless explicitly re-qualifying it.
 - Persistent Linux bridge/veth and VPP af_packet interfaces.
 - L3 and QinQ service interface.
 - VPP DHCP proxy to Kea; Kea advertises DNS and RFC 8910 option 114 with
-  `https://wifi.bsnl.co.in/portal/login/`.
-- dnsmasq maps portal/captive-check names to `10.44.0.209`.
-- VPP route to `10.44.0.0/22`; Linux forwarding and scoped SNAT allow
+  https://wifi.bsnl.co.in/portal/login/.
+- dnsmasq maps portal/captive-check names to 10.44.0.209.
+- VPP route to 10.44.0.0/22; Linux forwarding and scoped SNAT allow
   subscribers to reach the existing portal without a portal-host return route.
-- Persistent pre-auth ACL on `host-vpp-access.101`: DHCP, DNS to `198.51.100.2`,
+- Persistent pre-auth ACL on host-vpp-access.101: DHCP, DNS to 198.51.100.2,
   and HTTP/HTTPS/diagnostic ICMP to the portal are allowed; unmatched IPv4 is
   denied.
+- Subscriber lifecycle control plane supports authenticated activation,
+  deactivation, expiry, tenant validation, durable idempotency, conflict
+  detection, and audit events.
+- Controller API supports bearer-token/mTLS lab authentication and HMAC-signed
+  portal events with timestamp replay protection when
+  BSNL_VPP_PORTAL_HMAC_SECRET is configured.
+- Controller request bodies are bounded to 1 MiB; VPP policy writes remain
+  disabled because the adapter is still dry-run.
 
 Verified from isolated QinQ namespaces: DHCP lease, DNS mapping, portal HTTP
-`/generate_204` 200, HTTPS `/portal/login/` 200, portal reachability, and an
+/generate_204 200, HTTPS /portal/login/ 200, portal reachability, and an
 unapproved destination denied by the ACL. See implementation status for exact
 test details and limits.
 
@@ -98,20 +106,18 @@ dnsmasq --test
 
 ## Next work
 
-1. Implement an authenticated subscriber state and safe dynamic allowlisting.
-   Do not grant broad internet access without a defined state source, expiry,
-   idempotency, audit, and deactivation path.
-2. Inspect the Django portal session lifecycle and define a signed or
-   mutually-authenticated event/API from portal to gateway controller.
-3. Replace hard-coded ACL index/rules with validated desired state and
-   idempotent reconciliation. The current controller is only a dry-run
-   skeleton; it is not yet the policy authority.
+1. Inspect the Django portal session lifecycle and connect its real activation
+   and deactivation callbacks to the controller event API.
+2. Configure the portal HMAC secret out-of-band and validate the end-to-end
+   signed event flow; never commit the secret.
+3. Replace the dry-run adapter and hard-coded ACL index/rules with validated,
+   idempotent desired-state reconciliation and safe per-subscriber policy.
 4. Add negative tests for IPv6, DoH/DoT, QUIC, spoofed source IP/MAC, and
    expired/deactivated subscribers before broadening policy.
 5. Complete captive redirect behavior and RFC 8908 API only after an explicit
    design for the existing portal integration.
+6. Perform hardware/DPDK, throughput, scale, DHCP-churn, failure-recovery,
+   policy, and accounting qualification.
 
 Do not enable authenticated internet forwarding as an assumed next step.
-First map the portal's real session activation/deactivation callbacks and
-define how the gateway learns authorization. Preserve VyOS behavior and its
-rollback role during VPP development.
+Preserve VyOS behavior and its rollback role during VPP development.

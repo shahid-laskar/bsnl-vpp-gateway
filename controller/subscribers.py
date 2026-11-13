@@ -1,13 +1,22 @@
 from __future__ import annotations
 import ipaddress, json, re
+import threading
+from functools import wraps
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from .store import DesiredStateStore
+from .store import DesiredStateStore, request_hash
 MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$", re.IGNORECASE)
 ACTIVE_STATE = "authenticated"
 INACTIVE_STATES = frozenset({"deactivated", "expired"})
+
+def synchronized(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
 @dataclass(frozen=True)
 class LifecycleResult:
     operation_id: str
@@ -21,30 +30,57 @@ class SubscriberLifecycle:
     """Fail-closed, idempotent subscriber state transitions. Control-plane state only."""
     def __init__(self, store: DesiredStateStore, audit_path: str | Path) -> None:
         self.store, self.audit_path = store, Path(audit_path)
+        self._lock = threading.RLock()
+    @synchronized
     def activate(self, subscriber: dict[str, Any], *, idempotency_key: str, operation_id: str, now: datetime | None = None) -> LifecycleResult:
         self._validate(subscriber); now = now or datetime.now(timezone.utc)
+        fingerprint = request_hash({"operation": "activate", "subscriber": subscriber})
+        replay = self._replay(idempotency_key, fingerprint, subscriber["session_key"], operation_id)
+        if replay is not None:
+            return replay
         expiry = self._parse_expiry(subscriber.get("valid_until"))
         if expiry is None or expiry <= now: raise ValueError("authenticated subscriber requires a future valid_until")
         state = self.store.read() or {}; self._validate_tenant(state, subscriber["tenant_key"])
         items = state.setdefault("subscribers", [])
         existing = next((x for x in items if x.get("session_key") == subscriber["session_key"]), None)
         if existing is not None and existing.get("state") == ACTIVE_STATE and all(existing.get(k) == v for k, v in subscriber.items()):
-            result = self._result(state, subscriber["session_key"], idempotency_key, operation_id, False, True, "already_active"); self._audit(result); return result
+            result = self._result(state, subscriber["session_key"], idempotency_key, operation_id, False, True, "already_active"); self._audit(result); self.store.put_idempotency(idempotency_key, fingerprint, result.__dict__); return result
         value = {**subscriber, "state": ACTIVE_STATE}
         if existing is None: items.append(value)
         else: existing.clear(); existing.update(value)
         state["gateway_revision"] = int(state.get("gateway_revision", 0)) + 1; self.store.write(state)
-        result = self._result(state, value["session_key"], idempotency_key, operation_id, True, True, "activated"); self._audit(result); return result
+        result = self._result(state, value["session_key"], idempotency_key, operation_id, True, True, "activated"); self._audit(result); self.store.put_idempotency(idempotency_key, fingerprint, result.__dict__); return result
+    @synchronized
     def deactivate(self, session_key: str, *, idempotency_key: str, operation_id: str, reason: str = "portal_deactivation") -> LifecycleResult:
+        if not session_key:
+            raise ValueError("session_key is required")
+        fingerprint = request_hash({"operation": "deactivate", "session_key": session_key, "reason": reason})
+        replay = self._replay(idempotency_key, fingerprint, session_key, operation_id)
+        if replay is not None:
+            return replay
         state = self.store.read() or {}; items = state.setdefault("subscribers", [])
         existing = next((x for x in items if x.get("session_key") == session_key), None)
         if existing is None:
-            result = self._result(state, session_key, idempotency_key, operation_id, False, False, "not_found"); self._audit(result); return result
+            result = self._result(state, session_key, idempotency_key, operation_id, False, False, "not_found"); self._audit(result); self.store.put_idempotency(idempotency_key, fingerprint, result.__dict__); return result
         if existing.get("state") in INACTIVE_STATES:
-            result = self._result(state, session_key, idempotency_key, operation_id, False, False, "already_inactive"); self._audit(result); return result
+            result = self._result(state, session_key, idempotency_key, operation_id, False, False, "already_inactive"); self._audit(result); self.store.put_idempotency(idempotency_key, fingerprint, result.__dict__); return result
         existing["state"], existing["valid_until"] = "deactivated", None
         state["gateway_revision"] = int(state.get("gateway_revision", 0)) + 1; self.store.write(state)
-        result = self._result(state, session_key, idempotency_key, operation_id, True, False, reason); self._audit(result); return result
+        result = self._result(state, session_key, idempotency_key, operation_id, True, False, reason); self._audit(result); self.store.put_idempotency(idempotency_key, fingerprint, result.__dict__); return result
+    def _replay(self, key: str, fingerprint: str, session_key: str, operation_id: str) -> LifecycleResult | None:
+        if not key:
+            raise ValueError("idempotency_key is required")
+        record = self.store.get_idempotency(key)
+        if record is None:
+            return None
+        if record["request_hash"] != fingerprint:
+            raise ValueError("idempotency key was already used for a different request")
+        saved = json.loads(record["result"])
+        result = LifecycleResult(operation_id, key, saved["gateway_revision"], False, saved["authorized"], session_key, "idempotent_replay")
+        self._audit(result)
+        return result
+
+    @synchronized
     def expire(self, *, now: datetime | None = None, operation_id: str = "expiry-reconciler") -> list[LifecycleResult]:
         now = now or datetime.now(timezone.utc); state = self.store.read() or {}; results = []
         for item in list(state.get("subscribers", [])):

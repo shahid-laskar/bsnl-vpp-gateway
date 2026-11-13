@@ -1,5 +1,8 @@
 import json
 import os
+import hashlib
+import hmac
+import time
 import threading
 from http.client import HTTPConnection
 
@@ -73,5 +76,32 @@ def test_api_activates_qualified_lab_subscriber(tmp_path, monkeypatch):
     status, payload = request(server, "POST", "/v1/subscribers/activate", {"operation_id": "op-1", "subscriber": subscriber}, headers)
     assert status == 200
     assert payload["changed"] is False
+    server.shutdown()
+    server.server_close()
+
+def test_api_requires_valid_portal_hmac_and_timestamp(tmp_path, monkeypatch):
+    monkeypatch.delenv("BSNL_VPP_CONTROLLER_TOKEN", raising=False)
+    secret = "portal-shared-secret"
+    monkeypatch.setenv("BSNL_VPP_PORTAL_HMAC_SECRET", secret)
+    server = SubscriberApiServer(("127.0.0.1", 0), str(tmp_path / "desired.json"), str(tmp_path / "audit.jsonl"))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    body = {"operation_id": "op-1", "session_key": "unknown"}
+    raw = json.dumps(body).encode()
+    timestamp = str(int(time.time()))
+    message = (timestamp + "\n/v1/subscribers/deactivate\n").encode() + raw
+    signature = "sha256=" + hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+    status, payload = request(server, "POST", "/v1/subscribers/deactivate", body, {
+        "Idempotency-Key": "portal-hmac-1",
+        "X-BSNL-Timestamp": timestamp,
+        "X-BSNL-Signature": signature,
+    })
+    assert status == 200
+    assert payload["reason"] == "not_found"
+    status, payload = request(server, "POST", "/v1/subscribers/deactivate", body, {
+        "Idempotency-Key": "portal-hmac-2",
+        "X-BSNL-Timestamp": str(int(time.time()) - 301),
+        "X-BSNL-Signature": signature,
+    })
+    assert status == 401
     server.shutdown()
     server.server_close()
