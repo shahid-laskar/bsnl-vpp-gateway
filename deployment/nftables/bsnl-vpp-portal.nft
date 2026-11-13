@@ -1,0 +1,12 @@
+table ip bsnl_vpp_portal {
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    iifname "br-wan" oifname "ens18" ip saddr 10.9.101.0/24 ip daddr 10.44.0.0/22 ct state new,established,related counter accept
+    iifname "ens18" oifname "br-wan" ip saddr 10.44.0.0/22 ip daddr 10.9.101.0/24 ct state established,related counter accept
+  }
+
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    oifname "ens18" ip saddr 10.9.101.0/24 ip daddr 10.44.0.0/22 counter snat to 10.44.0.207
+  }
+}

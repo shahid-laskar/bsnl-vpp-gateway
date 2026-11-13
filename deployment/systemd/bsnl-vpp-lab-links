@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+create_bridge_path() {
+  bridge="$1"
+  external="$2"
+  vpp_host="$3"
+  bridge_peer="$4"
+  ip link show "$bridge" >/dev/null 2>&1 || ip link add name "$bridge" type bridge
+  ip link show "$vpp_host" >/dev/null 2>&1 || ip link add "$vpp_host" type veth peer name "$bridge_peer"
+  ip link set "$external" master "$bridge"
+  ip link set "$bridge_peer" master "$bridge"
+  ip link set "$bridge" up
+  ip link set "$external" up
+  ip link set "$vpp_host" up
+  ip link set "$bridge_peer" up
+}
+
+case "${1:-start}" in
+  start)
+    create_bridge_path br-access ens19 vpp-access access-vpp
+    create_bridge_path br-wan ens20 vpp-wan wan-vpp
+    ip addr replace 198.51.100.2/24 dev br-wan
+    ip route replace 10.9.101.0/24 via 198.51.100.1 dev br-wan
+    ;;
+  stop)
+    ip route del 10.9.101.0/24 via 198.51.100.1 dev br-wan 2>/dev/null || true
+    ip addr del 198.51.100.2/24 dev br-wan 2>/dev/null || true
+    ip link del vpp-access 2>/dev/null || true
+    ip link del vpp-wan 2>/dev/null || true
+    ip link del br-access 2>/dev/null || true
+    ip link del br-wan 2>/dev/null || true
+    ;;
+  *) echo "usage: $0 [start|stop]" >&2; exit 2 ;;
+esac

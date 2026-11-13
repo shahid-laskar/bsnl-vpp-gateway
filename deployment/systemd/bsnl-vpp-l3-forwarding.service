@@ -1,0 +1,13 @@
+[Unit]
+Description=BSNL VPP lab L3 forwarding fixture
+Requires=bsnl-vpp-afpacket.service
+After=bsnl-vpp-afpacket.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bsnl-vpp-l3-forwarding
+ExecStop=/usr/local/sbin/bsnl-vpp-l3-forwarding stop
+
+[Install]
+WantedBy=multi-user.target

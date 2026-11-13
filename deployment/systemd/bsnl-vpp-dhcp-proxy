@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+case "${1:-start}" in
+  start)
+    vppctl set dhcp proxy server 198.51.100.2 src-address 198.51.100.1
+    ;;
+  stop)
+    vppctl set dhcp proxy del server 198.51.100.2 src-address 198.51.100.1
+    ;;
+  *) echo "usage: $0 [start|stop]" >&2; exit 2 ;;
+esac

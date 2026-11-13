@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+interface=host-vpp-access.101
+acl_index=1
+
+apply_acl() {
+  vppctl set acl-plugin acl index "$acl_index" \
+    permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 80-80, \
+    permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 443-443, \
+    permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 1, \
+    permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 17 sport 0-65535 dport 53-53, \
+    permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 6 sport 0-65535 dport 53-53, \
+    permit src 0.0.0.0/0 dst 255.255.255.255/32 proto 17 sport 68-68 dport 67-67
+  vppctl set acl-plugin interface "$interface" input acl "$acl_index"
+}
+
+case "${1:-start}" in
+  start)
+    apply_acl
+    ;;
+  stop)
+    vppctl set acl-plugin interface "$interface" input acl "$acl_index" del 2>/dev/null || true
+    vppctl delete acl-plugin acl index "$acl_index" 2>/dev/null || true
+    ;;
+  *)
+    echo "usage: $0 [start|stop]" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,24 @@
+schema_version: 1
+status: provisional-lab
+captured_at: "2026-11-11T00:00:00Z"
+host:
+  os: "Ubuntu 24.04.3 LTS"
+  kernel: "6.8.0-149-generic"
+  architecture: amd64
+  management_interface: ens18
+vpp:
+  release: "26.10-release"
+  package_source: "https://packagecloud.io/fdio/release"
+  packages: [vpp, vpp-plugin-core, vpp-plugin-dpdk, python3-vpp-api]
+  dataplane_mode: af_packet-lab
+  dpdk_binding: disabled
+  bundled_dpdk: "OPEN-R: record after VPP installation with show dpdk version"
+services:
+  python: "3.12"
+  kea: deferred
+  resolver: deferred
+  accounting_collector: deferred
+notes:
+  - "Do not install Ubuntu dpdk packages for the dataplane."
+  - "Do not bind ens18, ens19 or ens20 to vfio-pci in this VM lab."
+  - "Re-capture this manifest after package installation and before feature qualification."

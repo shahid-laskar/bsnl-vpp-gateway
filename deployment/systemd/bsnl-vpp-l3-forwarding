@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+configure_interface() {
+  interface="$1"
+  address="$2"
+  vppctl set interface ip address del "$interface" "$address" >/dev/null 2>&1 || true
+  vppctl set interface ip address "$interface" "$address"
+  vppctl set interface state "$interface" up
+}
+
+case "${1:-start}" in
+  start)
+    configure_interface host-vpp-access 192.0.2.1/24
+    configure_interface host-vpp-wan 198.51.100.1/24
+    vppctl ip route add 10.44.0.0/22 via 198.51.100.2 host-vpp-wan 2>/dev/null || true
+    ;;
+  stop)
+    vppctl ip route del 10.44.0.0/22 via 198.51.100.2 host-vpp-wan 2>/dev/null || true
+    vppctl set interface ip address del host-vpp-access 192.0.2.1/24 >/dev/null 2>&1 || true
+    vppctl set interface ip address del host-vpp-wan 198.51.100.1/24 >/dev/null 2>&1 || true
+    ;;
+  *) echo "usage: $0 [start|stop]" >&2; exit 2 ;;
+esac

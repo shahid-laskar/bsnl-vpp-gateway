@@ -1,0 +1,13 @@
+[Unit]
+Description=BSNL VPP DHCP proxy to Kea
+Requires=bsnl-vpp-qinq.service isc-kea-dhcp4-server.service
+After=bsnl-vpp-qinq.service isc-kea-dhcp4-server.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bsnl-vpp-dhcp-proxy
+ExecStop=/usr/local/sbin/bsnl-vpp-dhcp-proxy stop
+
+[Install]
+WantedBy=multi-user.target

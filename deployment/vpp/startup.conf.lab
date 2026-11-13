@@ -1,0 +1,21 @@
+unix {
+  nodaemon
+  log /var/log/vpp/vpp.log
+  full-coredump
+  cli-listen /run/vpp/cli.sock
+  gid vpp
+}
+api-segment { gid vpp }
+socksvr { socket-name /run/vpp/api.sock }
+statseg { socket-name /run/vpp/stats.sock size 64M }
+plugins {
+  plugin default { disable }
+  plugin dpdk_plugin.so { disable }
+  plugin acl_plugin.so { enable }
+  plugin abf_plugin.so { enable }
+  plugin nat_plugin.so { enable }
+  plugin ping_plugin.so { enable }
+  plugin af_packet_plugin.so { enable }
+  plugin dhcp_plugin.so { enable }
+}
+# No dpdk {} block. ens18 remains management-only.

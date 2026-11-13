@@ -1,0 +1,15 @@
+schema_version: 1
+gateway_id: lab-vpp-01
+fixture: dhcp-relay-to-kea
+client_subinterface: host-vpp-access.101
+client_subnet: 10.9.101.0/24
+relay_address: 198.51.100.1
+kea_interface: br-wan
+kea_address: 198.51.100.2/24
+vpp_source_address: 198.51.100.1
+pool: 10.9.101.5-10.9.101.105
+lease_lifetime_seconds: 300
+option_114: enabled
+portal_url: https://wifi.bsnl.co.in/portal/login/
+dns_service: dnsmasq
+dns_address: 198.51.100.2

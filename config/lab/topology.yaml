@@ -1,0 +1,33 @@
+schema_version: 1
+gateway_id: lab-vpp-01
+mode: linux-bridge-veth-af-packet
+management:
+  interface: ens18
+  address: 10.44.0.207/22
+  default_route: true
+  vpp_owned: false
+interfaces:
+  access0:
+    external_guest_interface: ens19
+    guest_bridge: br-access
+    vpp_host_interface: vpp-access
+    vpp_interface: host-vpp-access
+    role: subscriber-access
+    vpp_owned: true
+    dpdk_device: null
+  wan0:
+    external_guest_interface: ens20
+    guest_bridge: br-wan
+    vpp_host_interface: vpp-wan
+    vpp_interface: host-vpp-wan
+    role: upstream-wan
+    vpp_owned: true
+    dpdk_device: null
+bridge_assumption:
+  guest_interfaces_are_attached_to_hypervisor_bridges: true
+  guest_bridges_connect_external_nics_to_vpp_veth_endpoints: true
+  guest_must_not_create_or_reconfigure_hypervisor_bridges: true
+  hardwire_nic_integration_pending: true
+guardrails:
+  management_interface_must_not_be_in_vpp_dpdk_devices: true
+  allow_dpdk: false

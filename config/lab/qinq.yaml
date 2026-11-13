@@ -1,0 +1,23 @@
+schema_version: 1
+gateway_id: lab-vpp-01
+fixture: qinq-exact-match
+parent_interface: host-vpp-access
+outer:
+  tpid: "0x8100"
+  mode: dot1q
+  vlan: 200
+inner:
+  tpid: "0x8100"
+  mode: inner-dot1q
+  vlan: 101
+subinterface: host-vpp-access.101
+exact_match: true
+gateway_address: 10.9.101.1/24
+negative_cases:
+  - single-tagged outer-200
+  - double-tagged outer-200-inner-999
+  - triple-tagged outer-200-inner-101-extra-300
+production_outer_tpid:
+  requested: "0x88a8"
+  status: open-r04
+  finding: "0x88a8/dot1ad frames were captured correctly but were counted as unknown vlan by VPP 26.10 af_packet in this VM lab."

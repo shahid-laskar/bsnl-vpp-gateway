@@ -1,0 +1,13 @@
+[Unit]
+Description=BSNL VPP lab pre-auth subscriber ACL
+After=bsnl-vpp-qinq.service bsnl-vpp-dhcp-proxy.service
+Requires=bsnl-vpp-qinq.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bsnl-vpp-preauth start
+ExecStop=/usr/local/sbin/bsnl-vpp-preauth stop
+
+[Install]
+WantedBy=multi-user.target

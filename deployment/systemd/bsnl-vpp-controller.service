@@ -1,0 +1,20 @@
+[Unit]
+Description=BSNL VPP gateway controller (lab)
+After=network-online.target vpp.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bsnl-vpp
+Group=vpp
+WorkingDirectory=/opt/bsnl-vpp-gateway
+ExecStart=/opt/bsnl-vpp-gateway/.venv/bin/python -m controller.main --desired-state /opt/bsnl-vpp-gateway/config/lab/desired-state.json --store /var/lib/bsnl-vpp-gateway/desired-state.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bsnl-vpp-gateway
+
+[Install]
+WantedBy=multi-user.target

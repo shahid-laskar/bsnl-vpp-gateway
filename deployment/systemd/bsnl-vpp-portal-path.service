@@ -1,0 +1,14 @@
+[Unit]
+Description=BSNL VPP lab path to existing captive portal
+After=network-online.target bsnl-vpp-lab-links.service bsnl-vpp-l3-forwarding.service
+Wants=network-online.target
+Requires=bsnl-vpp-lab-links.service bsnl-vpp-l3-forwarding.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bsnl-vpp-portal-path start
+ExecStop=/usr/local/sbin/bsnl-vpp-portal-path stop
+
+[Install]
+WantedBy=multi-user.target

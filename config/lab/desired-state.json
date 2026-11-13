@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "gateway_id": "lab-vpp-01",
+  "gateway_revision": 2,
+  "tenants": [
+    {
+      "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101",
+      "customer_id": "lab-customer-001",
+      "ingress_port": "access0",
+      "outer_tpid": "0x8100",
+      "outer_vlan": 200,
+      "inner_vlan": 101,
+      "vrf_id": 101,
+      "gateway_ip": "10.9.101.1/24",
+      "dhcp_ranges": [{"start": "10.9.101.5", "end": "10.9.101.105"}],
+      "nat_pool_ref": null,
+      "pre_auth_policy_ref": "lab-preauth-v1",
+      "mac_enforcement": "log_only",
+      "admin_state": "enabled"
+    }
+  ],
+  "subscribers": [],
+  "nat_pools": [],
+  "policies": {"lab-preauth-v1": {"mode": "allowlist", "dataplane_apply": false}},
+  "qos_profiles": {}
+}

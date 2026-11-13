@@ -1,0 +1,18 @@
+schema_version: 1
+gateway_id: lab-vpp-01
+fixture: l3-forwarding
+interfaces:
+  access:
+    vpp_interface: host-vpp-access
+    address: 192.0.2.1/24
+    role: test-client-side
+  wan:
+    vpp_interface: host-vpp-wan
+    address: 198.51.100.1/24
+    role: test-upstream-side
+address_ranges: router-coded-private
+subscriber_range: 10.9.101.0/24
+subscriber_gateway: 10.9.101.1
+qinq: deferred
+nat: deferred
+acl: deferred

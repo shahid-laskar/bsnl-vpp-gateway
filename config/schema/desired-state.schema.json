@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bsnl.example.invalid/vpp/desired-state-v2.json",
+  "title": "BSNL VPP Gateway desired state v2",
+  "type": "object",
+  "required": ["schema_version", "gateway_id", "gateway_revision", "tenants", "subscribers", "nat_pools", "policies", "qos_profiles"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "gateway_id": {"type": "string", "minLength": 1},
+    "gateway_revision": {"type": "integer", "minimum": 0},
+    "tenants": {"type": "array", "items": {"$ref": "#/$defs/tenant"}},
+    "subscribers": {"type": "array", "items": {"$ref": "#/$defs/subscriber"}},
+    "nat_pools": {"type": "array", "items": {"$ref": "#/$defs/natPool"}},
+    "policies": {"type": "object"},
+    "qos_profiles": {"type": "object"}
+  },
+  "$defs": {
+    "tenant": {
+      "type": "object",
+      "required": ["tenant_key", "customer_id", "ingress_port", "outer_tpid", "outer_vlan", "inner_vlan", "vrf_id", "gateway_ip", "admin_state"],
+      "properties": {
+        "tenant_key": {"type": "string"}, "customer_id": {"type": "string"},
+        "ingress_port": {"type": "string", "enum": ["access0"]},
+        "parent_interface": {"type": "string", "minLength": 1}, "exact_match": {"const": true}, "mtu": {"type": "integer", "minimum": 576, "maximum": 9216}, "intra_tenant_policy": {"enum": ["block", "allow"]},
+        "outer_tpid": {"type": "string", "enum": ["0x8100", "0x88a8"]},
+        "outer_vlan": {"type": "integer", "minimum": 1, "maximum": 4094},
+        "inner_vlan": {"type": "integer", "minimum": 1, "maximum": 4094},
+        "vrf_id": {"type": "integer", "minimum": 0}, "gateway_ip": {"type": "string"},
+        "dhcp_ranges": {"type": "array"}, "nat_pool_ref": {"type": ["string", "null"]},
+        "pre_auth_policy_ref": {"type": ["string", "null"]}, "mac_enforcement": {"type": "string"},
+        "admin_state": {"enum": ["enabled", "disabled"]}
+      }
+    },
+    "subscriber": {
+      "type": "object",
+      "required": ["session_key", "tenant_key", "subscriber_id", "private_ipv4", "state"],
+      "properties": {
+        "session_key": {"type": "string"}, "tenant_key": {"type": "string"},
+        "subscriber_id": {"type": "string"}, "session_id": {"type": "string"},
+        "private_ipv4": {"type": "string"}, "mac": {"type": ["string", "null"]},
+        "lease_id": {"type": ["string", "null"]}, "state": {"type": "string"},
+        "policy_ref": {"type": ["string", "null"]}, "qos_profile_ref": {"type": ["string", "null"]},
+        "valid_until": {"type": ["string", "null"]}
+      }
+    },
+    "natPool": {
+      "type": "object",
+      "required": ["pool_ref", "addresses", "owner_gateway", "tenant_vrf"],
+      "properties": {
+        "pool_ref": {"type": "string"}, "addresses": {"type": "array", "items": {"type": "string"}},
+        "owner_gateway": {"type": "string"}, "tenant_vrf": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

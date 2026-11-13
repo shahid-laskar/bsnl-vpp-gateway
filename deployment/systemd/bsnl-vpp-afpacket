@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+ensure_interface() {
+  host_name="$1"
+  vpp_name="host-$1"
+  if ! vppctl show interface | grep -q "^[[:space:]]*$vpp_name[[:space:]]"; then
+    vppctl create host-interface name "$host_name"
+  fi
+  vppctl set interface state "$vpp_name" up
+}
+
+case "${1:-start}" in
+  start)
+    ensure_interface vpp-access
+    ensure_interface vpp-wan
+    ;;
+  stop)
+    vppctl delete host-interface name vpp-access 2>/dev/null || true
+    vppctl delete host-interface name vpp-wan 2>/dev/null || true
+    ;;
+  *) echo "usage: $0 [start|stop]" >&2; exit 2 ;;
+esac

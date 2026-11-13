@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+parent=host-vpp-access
+sub_id=101
+subif=host-vpp-access.101
+address=10.9.101.1/24
+
+case "${1:-start}" in
+  start)
+    if ! vppctl show interface | grep -q "^[[:space:]]*$subif[[:space:]]"; then
+      vppctl create sub-interfaces "$parent" "$sub_id" dot1q 200 inner-dot1q 101 exact-match
+    fi
+    vppctl set interface ip address del "$subif" "$address" >/dev/null 2>&1 || true
+    vppctl set interface ip address "$subif" "$address"
+    vppctl set interface state "$subif" up
+    ;;
+  stop)
+    vppctl set interface ip address del "$subif" "$address" >/dev/null 2>&1 || true
+    vppctl delete sub-interface "$subif" 2>/dev/null || true
+    ;;
+  *) echo "usage: $0 [start|stop]" >&2; exit 2 ;;
+esac

@@ -1,0 +1,14 @@
+[Unit]
+Description=BSNL VPP lab bridge and veth links
+After=network-online.target
+Before=vpp.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bsnl-vpp-lab-links
+ExecStop=/usr/local/sbin/bsnl-vpp-lab-links stop
+
+[Install]
+WantedBy=multi-user.target

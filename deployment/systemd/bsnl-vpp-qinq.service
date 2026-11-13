@@ -1,0 +1,13 @@
+[Unit]
+Description=BSNL VPP lab QinQ exact-match fixture
+Requires=bsnl-vpp-afpacket.service
+After=bsnl-vpp-afpacket.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bsnl-vpp-qinq
+ExecStop=/usr/local/sbin/bsnl-vpp-qinq stop
+
+[Install]
+WantedBy=multi-user.target

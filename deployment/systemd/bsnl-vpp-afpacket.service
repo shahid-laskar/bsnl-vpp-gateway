@@ -1,0 +1,13 @@
+[Unit]
+Description=BSNL VPP lab af_packet interfaces
+Requires=vpp.service bsnl-vpp-lab-links.service
+After=vpp.service bsnl-vpp-lab-links.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bsnl-vpp-afpacket
+ExecStop=/usr/local/sbin/bsnl-vpp-afpacket stop
+
+[Install]
+WantedBy=multi-user.target
