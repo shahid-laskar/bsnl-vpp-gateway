@@ -122,9 +122,11 @@ class SubscriberApiHandler(BaseHTTPRequestHandler):
         except (TypeError, ValueError, KeyError, json.JSONDecodeError, ContractError) as exc:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
-        # Only subscriber policy enforcement in VPP makes a session usable;
-        # interface writes alone (writes_enabled) do not.
-        enforced = bool(self.server.adapter.capabilities().get("subscriber_policy_enforced", False))
+        # dataplane_enforced: VPP now permits (activate) or no longer permits
+        # (deactivate) this subscriber, confirmed by applying desired state
+        # immediately. Interface writes alone never make a session usable.
+        enforcer = getattr(self.server.adapter, "enforce_subscriber", None)
+        enforced = bool(enforcer and enforcer(lifecycle.store.read() or {}, result.session_key, result.authorized))
         self._json(HTTPStatus.OK, {**result.__dict__, "contract_version": CONTRACT_VERSION, "dataplane_enforced": enforced})
 
     def log_message(self, *_args: Any) -> None:

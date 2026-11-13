@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Callable
 
 from .interfaces import VppInterfaceProvisioner, phase4_object_keys
+from .policy import VppPolicyEnforcer, tenant_policy
 from .validation import validate_desired_state
 
 LOG = logging.getLogger("bsnl_vpp.vpp_adapter")
@@ -56,6 +58,10 @@ class VppApiAdapter:
         self.vpp_version: str | None = None
         self.error: str | None = None
         self.last_apply_writes: list[str] = []
+        self.policy_applied: dict[str, set[str]] | None = None
+        self.policy_error: str | None = None
+        # vpp_papi clients are not thread-safe; API threads and the reconciler share one.
+        self._lock = threading.RLock()
 
     # Connection --------------------------------------------------------------------------
     def connect(self) -> None:
@@ -117,13 +123,19 @@ class VppApiAdapter:
             "api_crc_snapshot": self.snapshot.get("vpp_release"),
             "api_crc_ok": self.crc_ok,
             "writes_enabled": bool(self.enable_writes and usable),
-            "managed_objects": ["qinq_subinterface", "address", "vrf"],
-            "subscriber_policy_enforced": False,
-            "intra_tenant_policy_enforced": False,
+            "managed_objects": ["qinq_subinterface", "address", "vrf", "tenant_acl"],
+            # True only while the last policy apply succeeded against this VPP.
+            "subscriber_policy_enforced": bool(self.enable_writes and usable and self.policy_applied is not None and self.policy_error is None),
+            "intra_tenant_policy_enforced": bool(self.enable_writes and usable and self.policy_applied is not None),
+            "policy_error": self.policy_error,
             "error": self.error,
         }
 
     def observed_state(self) -> dict[str, Any]:
+        with self._lock:
+            return self._observed_state()
+
+    def _observed_state(self) -> dict[str, Any]:
         if not (self.connected and self.crc_ok):
             return {"mode": "vpp-papi", "vpp_connected": self.connected, "api_crc_ok": self.crc_ok, "error": self.error, "objects": []}
         provisioner = VppInterfaceProvisioner(self.client.api, enable_writes=False, port_map=self.port_map)
@@ -134,9 +146,36 @@ class VppApiAdapter:
         if not self.enable_writes:
             self.last_apply_writes = []
             return phase4_object_keys(desired_state, self.port_map)
-        if not self.ensure_connected():
-            raise RuntimeError(f"VPP API unavailable: {self.error}")
-        provisioner = VppInterfaceProvisioner(self.client.api, enable_writes=True, port_map=self.port_map)
-        keys = provisioner.apply(desired_state)
-        self.last_apply_writes = list(provisioner.writes)
-        return keys
+        with self._lock:
+            if not self.ensure_connected():
+                self.policy_applied = None
+                raise RuntimeError(f"VPP API unavailable: {self.error}")
+            provisioner = VppInterfaceProvisioner(self.client.api, enable_writes=True, port_map=self.port_map)
+            keys = provisioner.apply(desired_state)
+            writes = list(provisioner.writes)
+            if any(tenant_policy(desired_state, t) for t in desired_state.get("tenants", [])):
+                enforcer = VppPolicyEnforcer(self.client.api, enable_writes=True)
+                try:
+                    self.policy_applied = enforcer.apply(desired_state, provisioner.indexes)
+                    self.policy_error = None
+                except Exception as exc:
+                    self.policy_error = f"{type(exc).__name__}: {exc}"
+                    raise
+                finally:
+                    writes += enforcer.writes
+            self.last_apply_writes = writes
+            return keys
+
+    def enforce_subscriber(self, desired_state: dict[str, Any], session_key: str, authorized: bool) -> bool:
+        """Apply desired state now and confirm this subscriber's permit is
+        present (authorized) or absent (deauthorized) in VPP."""
+        if not self.enable_writes:
+            return False
+        try:
+            self.apply(desired_state)
+        except Exception as exc:
+            LOG.error("immediate policy enforcement failed for %s: %s", session_key, exc)
+            return False
+        tenant_key, _, address = session_key.rpartition("/")
+        applied = (self.policy_applied or {}).get(tenant_key)
+        return applied is not None and (address in applied) == authorized

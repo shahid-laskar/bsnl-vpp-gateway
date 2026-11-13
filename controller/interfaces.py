@@ -135,6 +135,7 @@ class VppInterfaceProvisioner:
         self.enable_writes = enable_writes
         self.port_map = port_map or {}
         self.writes: list[str] = []
+        self.indexes: dict[str, int] = {}
 
     # Planning / observation --------------------------------------------------------------
     def observe(self) -> dict[str, Any]:
@@ -164,8 +165,7 @@ class VppInterfaceProvisioner:
         if not self.enable_writes:
             return phase4_object_keys(desired_state, self.port_map)
         existing = self.discover(plans)
-        for plan in plans:
-            self.ensure(plan, existing.get(plan.tenant_key))
+        self.indexes = {plan.tenant_key: self.ensure(plan, existing.get(plan.tenant_key)) for plan in plans}
         self.remove_orphans(plans)
         return phase4_object_keys(desired_state, self.port_map)
 

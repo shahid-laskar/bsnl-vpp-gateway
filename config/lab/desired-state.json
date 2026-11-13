@@ -31,8 +31,60 @@
   "policies": {
     "lab-preauth-v1": {
       "mode": "allowlist",
-      "dataplane_apply": false,
-      "note": "Static pre-auth ACL applied by deployment/vpp/bsnl-lab.cli until remediation step 5."
+      "dataplane_apply": true,
+      "note": "Enforced only when the controller runs with --enable-vpp-writes; until then deployment/vpp/bsnl-lab.cli applies the static pre-auth ACL. authenticated_destinations is the lab fixture 192.0.2.0/24 (VPP's own host-vpp-access address): there is no NAT/upstream yet (step 7), so authorization opens no internet path.",
+      "preauth_allow": [
+        {
+          "src": "0.0.0.0/0",
+          "dst": "255.255.255.255/32",
+          "proto": "udp",
+          "src_port": 68,
+          "dst_port": 67
+        },
+        {
+          "dst": "10.9.101.1/32",
+          "proto": "udp",
+          "src_port": 68,
+          "dst_port": 67
+        },
+        {
+          "dst": "198.51.100.2/32",
+          "proto": "udp",
+          "src_port": 68,
+          "dst_port": 67
+        },
+        {
+          "dst": "198.51.100.2/32",
+          "proto": "udp",
+          "dst_port": 53
+        },
+        {
+          "dst": "198.51.100.2/32",
+          "proto": "tcp",
+          "dst_port": 53
+        },
+        {
+          "dst": "10.44.0.209/32",
+          "proto": "tcp",
+          "dst_port": 80
+        },
+        {
+          "dst": "10.44.0.209/32",
+          "proto": "tcp",
+          "dst_port": 443
+        },
+        {
+          "dst": "10.44.0.209/32",
+          "proto": "icmp"
+        }
+      ],
+      "protected_destinations": [
+        "10.44.0.0/22",
+        "198.51.100.0/24"
+      ],
+      "authenticated_destinations": [
+        "192.0.2.0/24"
+      ]
     }
   },
   "qos_profiles": {}

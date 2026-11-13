@@ -18,7 +18,7 @@ MESSAGES = [
     "sw_interface_set_table", "sw_interface_get_table", "sw_interface_add_del_address",
     "ip_address_dump", "sw_interface_set_flags", "sw_interface_tag_add_del",
     "ip_table_add_del_v2", "ip_table_dump",
-    "acl_dump", "acl_interface_list_dump",
+    "acl_dump", "acl_interface_list_dump", "acl_add_replace", "acl_interface_set_acl_list", "acl_del",
 ]
 
 

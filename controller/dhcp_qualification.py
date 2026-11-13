@@ -54,6 +54,25 @@ def cleanup(ns: str, host_if: str) -> None:
     try_run("ip", "link", "del", host_if)
 
 
+def setup_namespace(ns: str, host_if: str, bridge: str, outer_vlan: int, inner_vlan: int, client_if: str = "eth0") -> tuple[str, ...]:
+    """Throw-away subscriber: veth into ``bridge`` with a QinQ interface
+    ``eth0.<outer>.<inner>`` inside netns ``ns``. Returns the netns exec prefix."""
+    outer_if = f"{client_if}.{outer_vlan}"
+    qinq_if = f"{outer_if}.{inner_vlan}"
+    run("ip", "netns", "add", ns)
+    run("ip", "link", "add", host_if, "type", "veth", "peer", "name", client_if, "netns", ns)
+    run("ip", "link", "set", host_if, "master", bridge)
+    run("ip", "link", "set", host_if, "mtu", "1600", "up")
+    nsx = ("ip", "netns", "exec", ns)
+    run(*nsx, "ip", "link", "set", "lo", "up")
+    run(*nsx, "ip", "link", "set", client_if, "mtu", "1600", "up")
+    run(*nsx, "ip", "link", "add", "link", client_if, "name", outer_if, "type", "vlan", "id", str(outer_vlan), "protocol", "802.1Q")
+    run(*nsx, "ip", "link", "set", outer_if, "mtu", "1550", "up")
+    run(*nsx, "ip", "link", "add", "link", outer_if, "name", qinq_if, "type", "vlan", "id", str(inner_vlan), "protocol", "802.1Q")
+    run(*nsx, "ip", "link", "set", qinq_if, "mtu", "1500", "up")
+    return nsx
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a temporary QinQ DHCP/portal qualification")
     parser.add_argument("--namespace", default="bsnl-qual")
@@ -67,7 +86,7 @@ def main() -> int:
     parser.add_argument("--expect-dns", default="10.44.0.209")
     parser.add_argument("--http-url", default="http://wifi.bsnl.co.in/generate_204")
     parser.add_argument("--deny-probe", default="198.51.100.1", help="address that the pre-auth ACL must block")
-    parser.add_argument("--portal-url", default="https://wifi.bsnl.co.in/portal/login/", help="expected RFC 8910 option 114 value")
+    parser.add_argument("--portal-url", default="https://wifi.bsnl.co.in/portal/captive-api/", help="expected RFC 8910 option 114 value (RFC 8908 API URI)")
     parser.add_argument("--dhcp-only", action="store_true", help="skip DNS/HTTP/deny checks")
     parser.add_argument("--keep-capture", action="store_true")
     args = parser.parse_args()
@@ -84,17 +103,7 @@ def main() -> int:
     work = Path(tempfile.mkdtemp(prefix="bsnl-vpp-qual-"))
     lease, pidfile, capture = work / "leases", work / "dhclient.pid", work / "dhcp.pcap"
     try:
-        run("ip", "netns", "add", ns)
-        run("ip", "link", "add", host_if, "type", "veth", "peer", "name", client_if, "netns", ns)
-        run("ip", "link", "set", host_if, "master", args.bridge)
-        run("ip", "link", "set", host_if, "mtu", "1600", "up")
-        nsx = ("ip", "netns", "exec", ns)
-        run(*nsx, "ip", "link", "set", "lo", "up")
-        run(*nsx, "ip", "link", "set", client_if, "mtu", "1600", "up")
-        run(*nsx, "ip", "link", "add", "link", client_if, "name", outer_if, "type", "vlan", "id", str(args.outer_vlan), "protocol", "802.1Q")
-        run(*nsx, "ip", "link", "set", outer_if, "mtu", "1550", "up")
-        run(*nsx, "ip", "link", "add", "link", outer_if, "name", qinq_if, "type", "vlan", "id", str(args.inner_vlan), "protocol", "802.1Q")
-        run(*nsx, "ip", "link", "set", qinq_if, "mtu", "1500", "up")
+        nsx = setup_namespace(ns, host_if, args.bridge, args.outer_vlan, args.inner_vlan)
 
         tcpdump = subprocess.Popen(["tcpdump", "-ni", host_if, "-c", "8", "-w", str(capture), "udp port 67 or udp port 68"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         started = time.monotonic()

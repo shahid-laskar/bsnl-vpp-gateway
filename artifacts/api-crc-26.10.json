@@ -2,8 +2,11 @@
   "vpp_release": "26.10",
   "source": "/usr/share/vpp/api",
   "messages": {
+    "acl_add_replace": "acl_add_replace_ee5c2f18",
+    "acl_del": "acl_del_ef34fea4",
     "acl_dump": "acl_dump_ef34fea4",
     "acl_interface_list_dump": "acl_interface_list_dump_f9e6675e",
+    "acl_interface_set_acl_list": "acl_interface_set_acl_list_473982bd",
     "control_ping": "control_ping_51077d14",
     "create_subif": "create_subif_790ca755",
     "delete_subif": "delete_subif_f9e6675e",

@@ -59,9 +59,12 @@ def host_service_plan(tenant: dict[str, Any], services: dict[str, Any]) -> HostS
     lifetime = int(services.get("lease_lifetime_seconds", 300))
     if not 60 <= lifetime <= 86400:
         raise HostServiceValidationError("lease_lifetime_seconds must be between 60 and 86400")
-    portal_url = services.get("portal_url", "")
+    # RFC 8910 option 114 carries the RFC 8908 Captive Portal *API* URI
+    # (application/captive+json), not the login page; portal_url remains a
+    # fallback for older configs.
+    portal_url = services.get("captive_api_url") or services.get("portal_url", "")
     if not isinstance(portal_url, str) or not portal_url.startswith("https://"):
-        raise HostServiceValidationError("portal_url must use HTTPS")
+        raise HostServiceValidationError("captive_api_url must use HTTPS (RFC 8908)")
     return HostServicePlan(tenant["tenant_key"], subnet, gateway, pool_start, pool_end, relay, dns, lifetime, portal_url, kea_subnet_id(tenant))
 
 

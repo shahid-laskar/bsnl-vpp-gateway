@@ -128,6 +128,33 @@ dnsmasq --test
   writes were enabled. Kea subnet id 101 is pinned (`kea_subnet_id`) to keep
   the existing lease file valid.
 
+## Subscriber policy (remediation step 5)
+
+- `controller/policy.py` compiles each tenant's input ACL (first match):
+  pre-auth allowlist (DHCP incl. unicast renew, DNS to the gateway resolver,
+  portal 80/443/ICMP) -> protected prefixes denied (management LAN, gateway
+  host) -> intra-tenant deny -> one permit per authenticated /32 to
+  `authenticated_destinations` -> explicit deny-all. IPv4 only.
+- With `--enable-vpp-writes`, the controller owns a tagged ACL
+  (`bsnl:acl/<tenant>`) and binds it as the sub-interface's only input ACL;
+  activation/deactivation is applied before the API responds and
+  `dataplane_enforced` is true only when VPP confirms it. Without writes the
+  static ACL from `deployment/vpp/bsnl-lab.cli` stays in force (fail closed);
+  after a VPP restart that static ACL applies until the next reconcile tick.
+- Lab `authenticated_destinations` is `192.0.2.0/24` (VPP's own fixture
+  address): authorization is observable (ping 192.0.2.1) but opens no internet
+  path. NAT/upstream is step 7; do not widen it before then.
+- Option 114 now carries the RFC 8908 API URI
+  `https://wifi.bsnl.co.in/portal/captive-api/` (portal endpoint added in the
+  portal repo); reinstall the Kea config to apply it.
+- Bypass suite: `sudo python3 -m controller.bypass_suite` (pre-auth) and
+  `--phase authorized --static-ip <activated ip>`.
+- Lab exception (S-2): subscriber->portal traffic is SNATed out of the
+  management NIC `ens18` by `bsnl-vpp-portal-path`. Acceptable only in this VM
+  lab; production must reach the portal via the WAN/service network.
+- Not in this step: HTTP redirector + ABF for tcp/80, MACIP enforcement
+  (`mac_enforcement` stays `log_only`), SVS (candidate A) comparison for D-09.
+
 ## Next work
 
 1. Done (remediation step 2): the Django portal client speaks contract v1;

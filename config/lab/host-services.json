@@ -16,5 +16,6 @@
   "local_names": {
     "portal.lab": "198.51.100.2"
   },
-  "lease_lifetime_seconds": 300
+  "lease_lifetime_seconds": 300,
+  "captive_api_url": "https://wifi.bsnl.co.in/portal/captive-api/"
 }

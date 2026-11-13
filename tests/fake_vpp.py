@@ -5,7 +5,68 @@ import ipaddress
 from types import SimpleNamespace
 
 
-class FakeVppApi:
+class FakeAclMixin:
+    """ACL plugin calls (acl_dump / add_replace / interface list / del)."""
+
+    def _acl_init(self):
+        if not hasattr(self, "acls"):
+            self.acls: dict[int, dict] = {}
+            self.acl_bindings: dict[int, list[int]] = {}
+            self._next_acl = 0
+
+    def acl_dump(self, acl_index):
+        self._acl_init()
+        self.calls.append("acl_dump")
+        return [SimpleNamespace(acl_index=i, tag=a["tag"], count=len(a["r"]), r=[dict(r) for r in a["r"]]) for i, a in sorted(self.acls.items())]
+
+    def acl_add_replace(self, acl_index, tag, count, r):
+        self._acl_init()
+        self.calls.append("acl_add_replace")
+        if acl_index == 0xFFFFFFFF:
+            acl_index, self._next_acl = self._next_acl, self._next_acl + 1
+        elif acl_index not in self.acls:
+            return SimpleNamespace(retval=-6, acl_index=acl_index)
+        self.acls[acl_index] = {"tag": tag, "r": [dict(x) for x in r]}
+        return SimpleNamespace(retval=0, acl_index=acl_index)
+
+    def acl_interface_list_dump(self, sw_if_index):
+        self._acl_init()
+        self.calls.append("acl_interface_list_dump")
+        acls = self.acl_bindings.get(sw_if_index)
+        return [SimpleNamespace(sw_if_index=sw_if_index, count=len(acls), n_input=len(acls), acls=list(acls))] if acls else []
+
+    def acl_interface_set_acl_list(self, sw_if_index, count, n_input, acls):
+        self._acl_init()
+        self.calls.append("acl_interface_set_acl_list")
+        self.acl_bindings[sw_if_index] = list(acls)
+        return SimpleNamespace(retval=0)
+
+    def acl_del(self, acl_index):
+        self._acl_init()
+        self.calls.append("acl_del")
+        if any(acl_index in b for b in self.acl_bindings.values()):
+            return SimpleNamespace(retval=-142)
+        self.acls.pop(acl_index, None)
+        return SimpleNamespace(retval=0)
+
+    def permits(self, sw_if_index, src, dst, proto=1, dport=0):
+        """Evaluate the bound ACL first-match, like the ACL plugin input arc."""
+        self._acl_init()
+        for acl_index in self.acl_bindings.get(sw_if_index, []):
+            for rule in self.acls[acl_index]["r"]:
+                if ipaddress.ip_address(src) not in ipaddress.ip_network(rule["src_prefix"]):
+                    continue
+                if ipaddress.ip_address(dst) not in ipaddress.ip_network(rule["dst_prefix"]):
+                    continue
+                if rule["proto"] not in (0, proto):
+                    continue
+                if rule["proto"] in (6, 17) and not rule["dstport_or_icmpcode_first"] <= dport <= rule["dstport_or_icmpcode_last"]:
+                    continue
+                return bool(rule["is_permit"])
+        return False
+
+
+class FakeVppApi(FakeAclMixin):
     def __init__(self) -> None:
         self.interfaces: dict[int, dict] = {}
         self.addresses: dict[int, set[str]] = {}
