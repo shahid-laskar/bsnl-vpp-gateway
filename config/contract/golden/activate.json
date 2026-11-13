@@ -1,0 +1,11 @@
+{
+  "description": "Golden vector for the portal->controller v1 contract. Both repos must produce/verify exactly this. Test-only secret.",
+  "secret": "golden-test-secret-not-for-production",
+  "method": "POST",
+  "path": "/v1/subscribers/activate",
+  "timestamp": "1893450000",
+  "nonce": "0123456789abcdef0123456789abcdef",
+  "idempotency_key": "portal:3f1c9a52-0000-4000-8000-000000000001:activate:1893456000",
+  "body": "{\"operation_id\":\"portal:3f1c9a52-0000-4000-8000-000000000001:activate:1893456000\",\"subscriber\":{\"mac\":\"02:00:00:00:00:07\",\"private_ipv4\":\"10.9.101.7\",\"session_id\":\"3f1c9a52-0000-4000-8000-000000000001\",\"session_key\":\"lab-vpp-01/host-vpp-access/0x8100/200/101/10.9.101.7\",\"subscriber_id\":\"42\",\"tenant_key\":\"lab-vpp-01/host-vpp-access/0x8100/200/101\",\"valid_until\":\"2030-01-01T00:00:00+00:00\"}}",
+  "expected_signature": "sha256=0d9872fbf8a6db4947f4f06ede8ef219f99bee006bc0b251c2f5629da45c3831"
+}

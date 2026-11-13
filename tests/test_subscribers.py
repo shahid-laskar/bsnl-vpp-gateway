@@ -3,7 +3,7 @@ import pytest
 from controller.store import DesiredStateStore
 from controller.subscribers import SubscriberLifecycle
 def base_state():
-    return {"schema_version": 2, "gateway_id": "lab-vpp-01", "gateway_revision": 1, "tenants": [{"tenant_key": "tenant-1", "admin_state": "enabled"}], "subscribers": []}
+    return {"schema_version": 2, "gateway_id": "lab-vpp-01", "gateway_revision": 1, "tenants": [{"tenant_key": "tenant-1", "admin_state": "enabled", "gateway_ip": "10.9.101.1/24"}], "subscribers": []}
 def subscriber(expiry):
     return {"session_key": "tenant-1/10.9.101.5", "tenant_key": "tenant-1", "subscriber_id": "usr-1", "session_id": "sess-1", "private_ipv4": "10.9.101.5", "mac": "02:00:00:00:00:01", "valid_until": expiry.isoformat()}
 def lifecycle(tmp_path):
@@ -32,3 +32,19 @@ def test_deactivation_requires_session_key(tmp_path):
     service, _ = lifecycle(tmp_path)
     with pytest.raises(ValueError, match="session_key is required"):
         service.deactivate("", idempotency_key="k1", operation_id="op1")
+
+
+def test_activation_rejects_session_key_not_bound_to_tenant_and_ip(tmp_path):
+    service, _ = lifecycle(tmp_path)
+    value = subscriber(datetime.now(timezone.utc) + timedelta(minutes=5))
+    value["session_key"] = "sess-1"  # old Django client sent the portal session UUID
+    with pytest.raises(ValueError, match="session_key must equal"):
+        service.activate(value, idempotency_key="k1", operation_id="op1")
+
+@pytest.mark.parametrize("address", ["10.9.102.5", "10.9.101.1", "10.9.101.255"])
+def test_activation_rejects_address_outside_tenant_subnet(tmp_path, address):
+    service, _ = lifecycle(tmp_path)
+    value = subscriber(datetime.now(timezone.utc) + timedelta(minutes=5))
+    value["private_ipv4"], value["session_key"] = address, f"tenant-1/{address}"
+    with pytest.raises(ValueError, match="usable host address"):
+        service.activate(value, idempotency_key="k1", operation_id="op1")

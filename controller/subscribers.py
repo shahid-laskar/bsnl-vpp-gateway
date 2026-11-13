@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from .contract import session_key_for
 from .store import DesiredStateStore, request_hash
 MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$", re.IGNORECASE)
 ACTIVE_STATE = "authenticated"
@@ -40,7 +41,7 @@ class SubscriberLifecycle:
             return replay
         expiry = self._parse_expiry(subscriber.get("valid_until"))
         if expiry is None or expiry <= now: raise ValueError("authenticated subscriber requires a future valid_until")
-        state = self.store.read() or {}; self._validate_tenant(state, subscriber["tenant_key"])
+        state = self.store.read() or {}; self._validate_tenant(state, subscriber["tenant_key"], subscriber["private_ipv4"])
         items = state.setdefault("subscribers", [])
         existing = next((x for x in items if x.get("session_key") == subscriber["session_key"]), None)
         if existing is not None and existing.get("state") == ACTIVE_STATE and all(existing.get(k) == v for k, v in subscriber.items()):
@@ -94,9 +95,17 @@ class SubscriberLifecycle:
         if missing: raise ValueError(f"missing subscriber fields: {', '.join(missing)}")
         ipaddress.ip_address(subscriber["private_ipv4"])
         if subscriber.get("mac") and not MAC_RE.fullmatch(subscriber["mac"]): raise ValueError("mac must be a colon-separated six-octet address")
+        if subscriber["session_key"] != session_key_for(subscriber["tenant_key"], subscriber["private_ipv4"]):
+            raise ValueError("session_key must equal tenant_key + '/' + private_ipv4")
     @staticmethod
-    def _validate_tenant(state: dict[str, Any], tenant_key: str) -> None:
-        if not any(x.get("tenant_key") == tenant_key and x.get("admin_state") == "enabled" for x in state.get("tenants", [])): raise ValueError("subscriber tenant is missing or disabled")
+    def _validate_tenant(state: dict[str, Any], tenant_key: str, private_ipv4: str) -> None:
+        tenant = next((x for x in state.get("tenants", []) if x.get("tenant_key") == tenant_key and x.get("admin_state") == "enabled"), None)
+        if tenant is None: raise ValueError("subscriber tenant is missing or disabled")
+        try: gateway = ipaddress.ip_interface(tenant["gateway_ip"])
+        except (KeyError, ValueError) as exc: raise ValueError("subscriber tenant has no valid gateway_ip") from exc
+        address = ipaddress.ip_address(private_ipv4)
+        if address not in gateway.network or address in (gateway.ip, gateway.network.network_address, gateway.network.broadcast_address):
+            raise ValueError("private_ipv4 is not a usable host address in the tenant subnet")
     @staticmethod
     def _parse_expiry(value: Any) -> datetime | None:
         if not value: return None

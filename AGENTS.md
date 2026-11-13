@@ -56,9 +56,10 @@ documented `0x8100` lab fixture unless explicitly re-qualifying it.
 - Subscriber lifecycle control plane supports authenticated activation,
   deactivation, expiry, tenant validation, durable idempotency, conflict
   detection, and audit events.
-- Controller API supports bearer-token/mTLS lab authentication and HMAC-signed
-  portal events with timestamp replay protection when
-  BSNL_VPP_PORTAL_HMAC_SECRET is configured.
+- Controller API contract v1 (see ADR-007): mTLS with optional client-name
+  allowlist, plus HMAC (timestamp + nonce + method + path + Idempotency-Key +
+  body hash) when BSNL_VPP_PORTAL_HMAC_SECRET is configured. Responses report
+  `dataplane_enforced` (false while the adapter is dry-run).
 - Controller request bodies are bounded to 1 MiB; VPP policy writes remain
   disabled because the adapter is still dry-run.
 
@@ -72,22 +73,20 @@ test details and limits.
 Enabled units include:
 
 ```text
-vpp
-bsnl-vpp-lab-links
-bsnl-vpp-afpacket
-bsnl-vpp-l3-forwarding
-bsnl-vpp-qinq
-bsnl-vpp-dhcp-proxy
-bsnl-vpp-portal-path
-bsnl-vpp-preauth
+vpp                      # applies deployment/vpp/bsnl-lab.cli via unix { exec }
+bsnl-vpp-lab-links       # Linux bridges/veths; vpp.service requires it
+bsnl-vpp-portal-path     # lab nftables forward/SNAT to the portal
+bsnl-vpp-controller
 isc-kea-dhcp4-server
 dnsmasq
 ```
 
-Project-owned service/config templates live under `deployment/`; live configs
-are installed under `/etc`, `/usr/local/sbin`, and systemd directories. The
-pre-auth policy is lab-specific and currently uses ACL index 1. Its service
-reapplies the ACL after the QinQ unit starts.
+The VPP-side lab fixture (af_packet, L3, QinQ, DHCP proxy, pre-auth ACL index
+0) is in `deployment/vpp/bsnl-lab.cli` and is re-applied by VPP on every
+restart. The old vppctl oneshot units are retired to `deployment/legacy/`
+(they raced vpp.service startup). Install/repair the host with
+`sudo sh deployment/bin/bsnl-vpp-lab-install`; check it with
+`sudo bsnl-vpp-lab-check` and `sudo sh tests/lab/test_restart_recovery.sh`.
 
 Useful read-only checks on the VM:
 
@@ -106,10 +105,10 @@ dnsmasq --test
 
 ## Next work
 
-1. Inspect the Django portal session lifecycle and connect its real activation
-   and deactivation callbacks to the controller event API.
-2. Configure the portal HMAC secret out-of-band and validate the end-to-end
-   signed event flow; never commit the secret.
+1. Done (remediation step 2): the Django portal client speaks contract v1;
+   cross-repo golden vectors and an mTLS+HMAC E2E run pass.
+2. Provision the portal client certificate, BSNL_VPP_ALLOWED_CLIENTS and the
+   shared HMAC secret out-of-band; never commit them.
 3. Replace the dry-run adapter and hard-coded ACL index/rules with validated,
    idempotent desired-state reconciliation and safe per-subscriber policy.
 4. Add negative tests for IPv6, DoH/DoT, QUIC, spoofed source IP/MAC, and

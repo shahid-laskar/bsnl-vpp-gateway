@@ -1,0 +1,11 @@
+{
+  "description": "Golden vector for the portal->controller v1 contract. Both repos must produce/verify exactly this. Test-only secret.",
+  "secret": "golden-test-secret-not-for-production",
+  "method": "POST",
+  "path": "/v1/subscribers/deactivate",
+  "timestamp": "1893450000",
+  "nonce": "0123456789abcdef0123456789abcdef",
+  "idempotency_key": "portal:3f1c9a52-0000-4000-8000-000000000001:deactivate",
+  "body": "{\"operation_id\":\"portal:3f1c9a52-0000-4000-8000-000000000001:deactivate\",\"reason\":\"logout\",\"session_key\":\"lab-vpp-01/host-vpp-access/0x8100/200/101/10.9.101.7\"}",
+  "expected_signature": "sha256=c707d082f157f1c483cbd1de3ebb29fe87af414308667f22db79dfb4fa5caf93"
+}
