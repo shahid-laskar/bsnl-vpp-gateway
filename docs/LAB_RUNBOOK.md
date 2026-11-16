@@ -20,7 +20,8 @@ Tenant fixture: exact-match QinQ outer `0x8100`/200, inner `0x8100`/101,
 | `bsnl-vpp-lab-links` | Linux bridges and veths; `vpp.service` requires it |
 | `vpp` + `/etc/vpp/bsnl-lab.cli` | VPP applies af_packet, L3 fixture, QinQ, DHCP proxy and the static pre-auth ACL itself at every start (no vppctl race) |
 | `bsnl-vpp-portal-path` | Lab nftables forward/SNAT to the portal (ADR-012) |
-| `isc-kea-dhcp4-server`, `dnsmasq` | DHCP and captive DNS on `br-wan` |
+| `isc-kea-dhcp4-server` | DHCP on `br-wan` |
+| `unbound` + `/etc/unbound/unbound.conf.d/bsnl-vpp-lab.conf` | Split-horizon DNS on 198.51.100.2 (ADR-014); per-subscriber views in `/etc/unbound/bsnl/authenticated.conf`, written by the controller. dnsmasq is disabled (rollback only) |
 | `bsnl-vpp-controller` | API on 10.44.0.207:8787 (mTLS + HMAC), store `/var/lib/bsnl-vpp-gateway/controller.sqlite3`; secrets in `/etc/bsnl-vpp-gateway/controller.env`; reads Kea leases (`SupplementaryGroups=_kea`) into the `bindings` table every second (ADR-013) |
 
 The old vppctl oneshot units are in `deployment/legacy/` and must not be
@@ -33,6 +34,8 @@ cd /opt/bsnl-vpp-gateway
 sudo sh deployment/bin/bsnl-vpp-lab-install     # backs up, cleans test leftovers, installs, restarts, checks
 sudo bsnl-vpp-lab-check                         # read-only health check (--wait 30 to poll)
 sudo sh tests/lab/test_restart_recovery.sh 5    # restart VPP 5x; fixture + subscriber checks each time
+sudo sh deployment/bin/bsnl-vpp-unbound-install            # dnsmasq -> Unbound split DNS (done 2026-11-16)
+sudo sh deployment/bin/bsnl-vpp-unbound-install --rollback # back to dnsmasq
 ```
 
 ## Controller modes
@@ -67,12 +70,14 @@ address). Do not widen `authenticated_destinations` before NAT and IPDR (P7).
 ## Useful read-only commands
 
 ```bash
-systemctl is-active vpp bsnl-vpp-lab-links bsnl-vpp-portal-path isc-kea-dhcp4-server dnsmasq bsnl-vpp-controller
+systemctl is-active vpp bsnl-vpp-lab-links bsnl-vpp-portal-path isc-kea-dhcp4-server unbound bsnl-vpp-controller
 sudo vppctl show interface address
 sudo vppctl show acl-plugin acl
 sudo vppctl show acl-plugin interface
 sudo vppctl show ip fib 10.44.0.0/22
-sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf && sudo dnsmasq --test
+sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf && sudo unbound-checkconf
+cat /etc/unbound/bsnl/authenticated.conf          # authenticated /32s (controller-generated)
+sudo unbound-control list_local_zones | head      # global zones; view_list_local_zones captive
 sudo nft list table ip bsnl_vpp_portal
 journalctl -u bsnl-vpp-controller -n 50
 sudo sqlite3 /var/lib/bsnl-vpp-gateway/controller.sqlite3 "SELECT private_ipv4, mac, datetime(valid_from,'unixepoch'), datetime(valid_to,'unixepoch'), close_reason FROM bindings ORDER BY id DESC LIMIT 20"

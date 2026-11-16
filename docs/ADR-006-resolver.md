@@ -2,6 +2,11 @@
 
 ## Status
 
+Superseded for the lab resolver by ADR-014 (Unbound split-horizon views,
+2026-11-16). dnsmasq is disabled but its config is kept for rollback. The
+original decision follows.
+
+
 Lab-qualified resolver and existing-portal integration. Subscriber
 enforcement and captive redirection policy are not implemented.
 

@@ -93,12 +93,18 @@ class UnboundViewSync:
             return True
 
     def _write(self, content: str) -> None:
-        """Atomic replace; group-readable so the unbound user can read it."""
+        """Atomic replace, mode 0644.
+
+        World-readable on purpose: Unbound reads its config as root before
+        dropping privileges, and its AppArmor profile grants no
+        dac_override, so root cannot read a 0640 file it neither owns nor
+        shares a group with (the service then fails to start).
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile("w", dir=self.path.parent, prefix=f".{self.path.name}.", delete=False, encoding="utf-8") as handle:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
             temporary = Path(handle.name)
-        os.chmod(temporary, 0o640)
+        os.chmod(temporary, 0o644)
         temporary.replace(self.path)

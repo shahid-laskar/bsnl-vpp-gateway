@@ -124,7 +124,7 @@ def test_sync_writes_checks_and_reloads_only_on_change(tmp_path):
     assert views.sync(state(sub("10.9.101.7"))) is False  # unchanged: no reload
     assert views.sync(state()) is True
     assert "10.9.101.7" not in (tmp_path / "authenticated.conf").read_text()
-    assert oct((tmp_path / "authenticated.conf").stat().st_mode & 0o777) == "0o640"
+    assert oct((tmp_path / "authenticated.conf").stat().st_mode & 0o777) == "0o644"
 
 
 def test_failed_check_restores_previous_file_and_skips_reload(tmp_path):

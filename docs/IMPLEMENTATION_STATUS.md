@@ -1,6 +1,6 @@
 # BSNL VPP Gateway — Implementation Status
 
-Updated: 2026-11-16 (remediation steps 1–6 and P5-T4/T6 on `main`; P5 lab run done).
+Updated: 2026-11-16 (remediation steps 1–6 and Phase 5 P5-T4/T5/T6 on `main`; lab runs done).
 Plan: `/opt/captive-portal/captive-portal-multitenant/docs/vpp/FINAL_IMPLEMENTATION_PLAN.md`.
 
 This is a **development lab** on Ubuntu VM `10.44.0.207` (VPP 26.10 over
@@ -36,6 +36,9 @@ Evidence lives in `artifacts/` (this repo) and
   with Kea lease sync (`SupplementaryGroups=_kea`, `--kea-lease-file`). Kea was
   reinstalled from the repo: option 114 now carries the RFC 8908 API URI.
   Backup of the replaced files: `/root/bsnl-p5-install-20261116T111529.tgz`.
+- 2026-11-16: the resolver is **Unbound 1.19.2** with split-horizon views
+  (ADR-014); dnsmasq is disabled (config kept for rollback). Backup:
+  `/root/bsnl-unbound-install-20261116T113548.tgz`.
 
 ## Branches
 
@@ -109,7 +112,8 @@ gateway `main`, portal `vpp-setup` (merge commit `a14bd2a`). Not pushed.
 | Lease → SubscriberBinding history (P5-T4) | VERIFIED (2026-11-16) | ADR-013; 4 lab DORAs opened 4 bindings, an expired lease closed at its expiry (`lease_expired`), `/v1/bindings` returns current and historical bindings over mTLS; `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt` |
 | MAC from bindings for VPP routers (P5-T6) | TESTED (portal) / VERIFIED (controller API) | `GET /v1/bindings`; portal `resolve_subscriber_mac`. VPP neighbour table as secondary source: OPEN |
 | Lease → binding latency p95 ≤ 2 s | VERIFIED (lab, 4 samples) | 0.59–1.64 s (audit ts − lease CLTT), `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt`; not a load test |
-| Split DNS by authentication state (P5-T5) | OPEN | dnsmasq is a single-view lab fixture (ADR-006) |
+| Split DNS by authentication state (P5-T5) | VERIFIED (2026-11-16) | ADR-014: Unbound views; pre-auth captive answers + REFUSED for other names, authenticated /32 view with real answers, controller-driven reload (57–59 ms incl. activation); bypass suite DNS checks; `artifacts/test-reports/2026-11-16-p5-split-dns.txt` |
+| Resolver choice D-19, scale | PROVISIONAL | Unbound chosen for the lab; throughput and reload cost at churn not measured |
 
 ### P6 — Captive policy
 

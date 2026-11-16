@@ -21,7 +21,8 @@ vpp:
   api_crc_snapshot: "artifacts/api-crc-26.10.json"
 services:
   kea: "isc-kea-dhcp4-server 3.0.5-isc20261026134027"
-  resolver: "dnsmasq 2.91-0ubuntu0.24.04.2 (lab fixture, ADR-006)"
+  resolver: "unbound 1.19.2-1ubuntu3.12 (Ubuntu archive, apt-mark hold; split-horizon views, ADR-014; installed 2026-11-16)"
+  resolver_previous: "dnsmasq 2.91-0ubuntu0.24.04.2 (disabled, rollback only, ADR-006)"
   accounting_collector: "not deployed (P7)"
 controller:
   python: "3.12.3 (system)"

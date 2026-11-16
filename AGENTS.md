@@ -32,7 +32,7 @@ the remote gateway.
 | Subscriber subnet | `10.9.101.0/24`, VPP gateway `10.9.101.1` |
 | DHCP pool | `10.9.101.5–10.9.101.105` |
 | VPP host-side WAN | `198.51.100.1/24` |
-| Linux WAN bridge address | `198.51.100.2/24`; Kea and dnsmasq listen here |
+| Linux WAN bridge address | `198.51.100.2/24`; Kea and Unbound listen here |
 | Existing portal | `10.44.0.209`; hostname `wifi.bsnl.co.in` |
 
 `ens18` must remain Linux-managed and outside VPP/DPDK. Do not bind the VM NICs
@@ -47,7 +47,9 @@ documented `0x8100` lab fixture unless explicitly re-qualifying it.
 - L3 and QinQ service interface.
 - VPP DHCP proxy to Kea; Kea advertises DNS and RFC 8910 option 114 with
   https://wifi.bsnl.co.in/portal/login/.
-- dnsmasq maps portal/captive-check names to 10.44.0.209.
+- Unbound split-horizon DNS (ADR-014): before login, portal and captive-check
+  names answer 10.44.0.209 and other names are REFUSED; authenticated
+  subscribers get normal recursion. dnsmasq is disabled (rollback only).
 - VPP route to 10.44.0.0/22; Linux forwarding and scoped SNAT allow
   subscribers to reach the existing portal without a portal-host return route.
 - Persistent pre-auth ACL on host-vpp-access.101: DHCP, DNS to 198.51.100.2,
@@ -78,7 +80,7 @@ bsnl-vpp-lab-links       # Linux bridges/veths; vpp.service requires it
 bsnl-vpp-portal-path     # lab nftables forward/SNAT to the portal
 bsnl-vpp-controller
 isc-kea-dhcp4-server
-dnsmasq
+unbound                  # split DNS; dnsmasq disabled since 2026-11-16
 ```
 
 The VPP-side lab fixture (af_packet, L3, QinQ, DHCP proxy, pre-auth ACL index
@@ -165,7 +167,22 @@ dnsmasq --test
   at a time; the portal uses it for MAC lookup on VPP routers.
 - A portal MAC that differs from the binding is audited
   (`subscriber.mac_mismatch`), not rejected, until MACIP enforcement (P6).
-- See ADR-013. Split DNS (P5-T5) is still open.
+- See ADR-013.
+
+## Split DNS (Phase 5, P5-T5)
+
+- Unbound 1.19.2 on 198.51.100.2 (`deployment/bin/bsnl-vpp-unbound-install`,
+  `--rollback`). Static config rendered from `config/lab/host-services.json`
+  into `deployment/resolver/unbound-bsnl-vpp-lab.conf` (a test keeps them in
+  sync).
+- `controller/dns_views.py` writes `/etc/unbound/bsnl/authenticated.conf`
+  (authenticated /32s), checks with `unbound-checkconf`, then
+  `unbound-control reload_keep_cache`; on API state changes and every
+  reconcile tick.
+- Keep `/etc/unbound/bsnl` at 2755 / files 0644: Unbound's AppArmor profile
+  has no dac_override, so tighter modes stop Unbound from starting.
+- `unbound-resolvconf.service` is masked: the host keeps systemd-resolved.
+- See ADR-014.
 
 ## Next work
 
