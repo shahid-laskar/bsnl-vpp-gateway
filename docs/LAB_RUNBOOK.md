@@ -21,7 +21,7 @@ Tenant fixture: exact-match QinQ outer `0x8100`/200, inner `0x8100`/101,
 | `vpp` + `/etc/vpp/bsnl-lab.cli` | VPP applies af_packet, L3 fixture, QinQ, DHCP proxy and the static pre-auth ACL itself at every start (no vppctl race) |
 | `bsnl-vpp-portal-path` | Lab nftables forward/SNAT to the portal (ADR-012) |
 | `isc-kea-dhcp4-server`, `dnsmasq` | DHCP and captive DNS on `br-wan` |
-| `bsnl-vpp-controller` | API on 10.44.0.207:8787 (mTLS + HMAC), store `/var/lib/bsnl-vpp-gateway/controller.sqlite3`; secrets in `/etc/bsnl-vpp-gateway/controller.env` |
+| `bsnl-vpp-controller` | API on 10.44.0.207:8787 (mTLS + HMAC), store `/var/lib/bsnl-vpp-gateway/controller.sqlite3`; secrets in `/etc/bsnl-vpp-gateway/controller.env`; reads Kea leases (`SupplementaryGroups=_kea`) into the `bindings` table every second (ADR-013) |
 
 The old vppctl oneshot units are in `deployment/legacy/` and must not be
 installed.
@@ -75,6 +75,7 @@ sudo vppctl show ip fib 10.44.0.0/22
 sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf && sudo dnsmasq --test
 sudo nft list table ip bsnl_vpp_portal
 journalctl -u bsnl-vpp-controller -n 50
+sudo sqlite3 /var/lib/bsnl-vpp-gateway/controller.sqlite3 "SELECT private_ipv4, mac, datetime(valid_from,'unixepoch'), datetime(valid_to,'unixepoch'), close_reason FROM bindings ORDER BY id DESC LIMIT 20"
 ```
 
 ## Hardware transition

@@ -155,6 +155,18 @@ dnsmasq --test
 - Not in this step: HTTP redirector + ABF for tcp/80, MACIP enforcement
   (`mac_enforcement` stays `log_only`), SVS (candidate A) comparison for D-09.
 
+## Lease bindings (Phase 5, P5-T4/T6)
+
+- `controller/leases.py` reads Kea's memfile lease CSVs (no `lease_cmds` hook
+  in the lab); `controller/bindings.py` keeps the append-only `bindings` table
+  (open/renew/close, never delete) and `LeaseWatcher` polls every second when
+  `--kea-lease-file` is given. A source error keeps the bindings unchanged.
+- `GET /v1/bindings?tenant_key=&private_ipv4=[&at=]` returns the binding valid
+  at a time; the portal uses it for MAC lookup on VPP routers.
+- A portal MAC that differs from the binding is audited
+  (`subscriber.mac_mismatch`), not rejected, until MACIP enforcement (P6).
+- See ADR-013. Split DNS (P5-T5) is still open.
+
 ## Next work
 
 1. Done (remediation step 2): the Django portal client speaks contract v1;

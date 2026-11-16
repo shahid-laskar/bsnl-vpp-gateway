@@ -23,6 +23,13 @@ SCHEMA = (
     "CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK (id=1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS idempotency (idempotency_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00+00:00')",
+    # SubscriberBinding history (controller/bindings.py). Append-only: rows are
+    # closed by setting valid_to, never deleted. Times are epoch seconds.
+    "CREATE TABLE IF NOT EXISTS bindings (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_key TEXT NOT NULL, private_ipv4 TEXT NOT NULL, "
+    "mac TEXT NOT NULL, client_id TEXT, hostname TEXT, kea_subnet_id INTEGER, valid_from INTEGER NOT NULL, valid_to INTEGER, "
+    "lease_expire INTEGER, close_reason TEXT, source TEXT NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS bindings_by_address ON bindings(tenant_key, private_ipv4, valid_from)",
+    "CREATE INDEX IF NOT EXISTS bindings_open ON bindings(valid_to) WHERE valid_to IS NULL",
 )
 
 

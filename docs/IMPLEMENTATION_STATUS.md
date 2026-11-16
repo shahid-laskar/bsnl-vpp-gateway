@@ -1,6 +1,6 @@
 # BSNL VPP Gateway — Implementation Status
 
-Updated: 2026-11-13 (after the audit and remediation steps 1–6).
+Updated: 2026-11-16 (remediation steps 1–6 merged to `main`; P5-T4/T6 on `feat/p5-lease-bindings`).
 Plan: `/opt/captive-portal/captive-portal-multitenant/docs/vpp/FINAL_IMPLEMENTATION_PLAN.md`.
 
 This is a **development lab** on Ubuntu VM `10.44.0.207` (VPP 26.10 over
@@ -35,12 +35,12 @@ Evidence lives in `artifacts/` (this repo) and
   dry-run). Steps 4–5 code is committed but **not installed**; VPP writes are
   off.
 
-## Branches (not pushed, not merged)
+## Branches
 
-| Repo | Branch chain | Head |
-|---|---|---|
-| `bsnl-vpp-gateway` | `fix/step1-lab-dataplane` → `fix/step2-controller-contract` → `fix/step4-controller-correctness` → `fix/step5-subscriber-policy` → `docs/step6-status-evidence` | see `git log` |
-| `captive-portal-multitenant` | `vpp-setup` → `fix/step2-vpp-contract` → `fix/step3-dataplane-aware` → `fix/step5-captive-api` → `docs/step6-status-evidence` | see `git log` |
+Remediation steps 1–6 are on `main` in both repositories (gateway `main` =
+`756ea8e`, portal `vpp-setup` = `a123eba`). Phase 5 lease bindings (P5-T4/T6):
+gateway `feat/p5-lease-bindings`, portal `feat/p5-vpp-mac-lookup`
+(not pushed, not merged).
 
 ## Phase gates
 
@@ -106,7 +106,9 @@ Evidence lives in `artifacts/` (this repo) and
 |---|---|---|
 | DORA via VPP DHCP proxy → Kea | VERIFIED (2026-11-11) | ADR-005; `controller/dhcp_qualification.py` |
 | Option 114 = RFC 8908 API URI | READY-TO-RUN | Kea template updated; reinstall Kea config, then `sudo python3 -m controller.dhcp_qualification` |
-| Lease → SubscriberBinding, MAC from leases (P5-T4/T6) | OPEN | VPP routers currently skip MAC lookup |
+| Lease → SubscriberBinding history (P5-T4) | TESTED / READY-TO-RUN | ADR-013; `controller/leases.py`, `controller/bindings.py`, `tests/test_bindings.py`. Install the controller unit (`SupplementaryGroups=_kea`, `--kea-lease-file`), run a DORA, query `/v1/bindings` |
+| MAC from bindings for VPP routers (P5-T6) | TESTED | `GET /v1/bindings`; portal `resolve_subscriber_mac`. VPP neighbour table as secondary source: OPEN |
+| Lease → binding latency p95 ≤ 2 s | TESTED (fixture) | 1 s poll; needs lab DORA evidence |
 | Split DNS by authentication state (P5-T5) | OPEN | dnsmasq is a single-view lab fixture (ADR-006) |
 
 ### P6 — Captive policy

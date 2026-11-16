@@ -54,6 +54,8 @@ def main() -> int:
     parser.add_argument("--vpp-socket", default="/run/vpp/api.sock")
     parser.add_argument("--api-crc-snapshot", default=None)
     parser.add_argument("--reconcile-interval", type=float, default=30.0)
+    parser.add_argument("--kea-lease-file", default=None, help="Kea memfile lease CSV; enables lease -> SubscriberBinding sync (P5-T4)")
+    parser.add_argument("--lease-poll-interval", type=float, default=1.0)
     args = parser.parse_args()
     if args.api_crc_snapshot is None:
         from .vpp_adapter import DEFAULT_SNAPSHOT
@@ -75,6 +77,10 @@ def main() -> int:
     if args.serve:
         reconciler = Reconciler(store, lifecycle, adapter, args.reconcile_interval)
         reconciler.start()
+        if args.kea_lease_file:
+            from .bindings import LeaseWatcher
+            from .leases import KeaMemfileLeaseSource
+            LeaseWatcher(store, KeaMemfileLeaseSource(args.kea_lease_file), args.lease_poll_interval).start()
         serve(args.listen, args.port, args.store, args.audit, args.tls_cert, args.tls_key, args.tls_ca, adapter=adapter, lifecycle=lifecycle)
     return 0
 

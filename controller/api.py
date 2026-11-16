@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import logging
 import os
 import ssl
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import parse_qs
 
+from .bindings import binding_at, binding_view
 from .contract import CONTRACT_VERSION, ContractError, ReplayCache, validate_request, verify_signature
 from .reconcile import LabAdapter
 from .store import DesiredStateStore
-from .subscribers import StaleEventError, SubscriberLifecycle
+from .subscribers import StaleEventError, SubscriberLifecycle, parse_expiry
 
 LOG = logging.getLogger("bsnl_vpp.api")
 MAX_BODY_BYTES = 1024 * 1024
+BINDINGS_PATH = "/v1/bindings"
 ROUTES = {
     "/v1/subscribers/activate": "activateRequest",
     "/v1/subscribers/deactivate": "deactivateRequest",
@@ -72,18 +77,43 @@ class SubscriberApiHandler(BaseHTTPRequestHandler):
         return self.rfile.read(int(raw_length))
 
     def do_GET(self) -> None:
-        if self.path == "/health":
+        path, _, query = self.path.partition("?")
+        if path == "/health":
             self._json(HTTPStatus.OK, {"status": "ok", "contract_version": CONTRACT_VERSION})
             return
-        if self.path not in {"/v1/capabilities", "/v1/observed-state"}:
+        if path not in {"/v1/capabilities", "/v1/observed-state", BINDINGS_PATH}:
             self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
         if self._transport_actor() is None:
             self._json(HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"})
             return
+        if path == BINDINGS_PATH:
+            self._get_binding(query)
+            return
         adapter = self.server.adapter
         payload = adapter.capabilities() if self.path == "/v1/capabilities" else adapter.observed_state()
         self._json(HTTPStatus.OK, {**payload, "contract_version": CONTRACT_VERSION})
+
+    def _get_binding(self, query: str) -> None:
+        """GET /v1/bindings?tenant_key=..&private_ipv4=..[&at=RFC3339]
+
+        The SubscriberBinding valid at ``at`` (default now): MAC lookup for the
+        portal (P5-T6) and IP attribution as of an event time.
+        """
+        params = parse_qs(query, keep_blank_values=False)
+        if any(len(values) != 1 for values in params.values()) or not {"tenant_key", "private_ipv4"} <= params.keys() or set(params) - {"tenant_key", "private_ipv4", "at"}:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "query requires exactly tenant_key and private_ipv4 (optional at)"})
+            return
+        tenant_key, address = params["tenant_key"][0], params["private_ipv4"][0]
+        try:
+            address = str(ipaddress.IPv4Address(address))
+            at = parse_expiry(params["at"][0]) if "at" in params else datetime.now(timezone.utc)
+        except ValueError as exc:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": f"invalid query: {exc}"})
+            return
+        row = binding_at(self.server.lifecycle.store, tenant_key, address, int(at.timestamp()))
+        self._json(HTTPStatus.OK, {"contract_version": CONTRACT_VERSION, "tenant_key": tenant_key, "private_ipv4": address,
+                                   "at": at.isoformat(), "binding": binding_view(row) if row else None})
 
     def do_POST(self) -> None:
         definition = ROUTES.get(self.path)

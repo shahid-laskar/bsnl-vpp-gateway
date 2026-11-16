@@ -18,6 +18,15 @@ def test_golden_vectors_sign_and_validate(name):
     assert verify_signature(vector["secret"], headers, "POST", vector["path"], raw, ReplayCache(), now=int(vector["timestamp"])) is None
 
 
+def test_golden_binding_response_validates():
+    from urllib.parse import parse_qs, urlsplit
+    from controller.contract import _validator
+    vector = json.loads((GOLDEN / "binding.json").read_text())
+    assert not list(_validator("bindingResponse").iter_errors(vector["response"]))
+    query = parse_qs(urlsplit(vector["path"]).query)
+    assert (query["tenant_key"][0], query["private_ipv4"][0]) == (vector["response"]["tenant_key"], vector["response"]["private_ipv4"])
+
+
 def test_golden_activate_session_key_matches_rule():
     body = json.loads(json.loads((GOLDEN / "activate.json").read_text())["body"])
     subscriber = body["subscriber"]

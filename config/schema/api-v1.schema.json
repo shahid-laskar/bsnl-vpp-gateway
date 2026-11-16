@@ -56,6 +56,36 @@
         "reason": {"type": "string"},
         "dataplane_enforced": {"type": "boolean", "description": "true only when the subscriber state has been applied to VPP; false while the dataplane adapter is dry-run"}
       }
+    },
+    "binding": {
+      "description": "SubscriberBinding (FINAL plan section 5.3) derived from a DHCP lease. valid_to null = still open.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_key", "private_ipv4", "mac", "client_id", "hostname", "valid_from", "valid_to", "lease_expire", "close_reason", "source"],
+      "properties": {
+        "tenant_key": {"type": "string"},
+        "private_ipv4": {"type": "string", "format": "ipv4"},
+        "mac": {"type": "string", "pattern": "^[0-9a-f]{2}(:[0-9a-f]{2}){5}$"},
+        "client_id": {"type": ["string", "null"]},
+        "hostname": {"type": ["string", "null"]},
+        "valid_from": {"type": "string"},
+        "valid_to": {"type": ["string", "null"]},
+        "lease_expire": {"type": ["string", "null"]},
+        "close_reason": {"type": ["string", "null"], "enum": [null, "lease_expired", "lease_released", "mac_changed"]},
+        "source": {"type": "string"}
+      }
+    },
+    "bindingResponse": {
+      "description": "GET /v1/bindings?tenant_key=&private_ipv4=[&at=RFC3339] (mTLS-authenticated, no body).",
+      "type": "object",
+      "required": ["contract_version", "tenant_key", "private_ipv4", "at", "binding"],
+      "properties": {
+        "contract_version": {"const": "v1"},
+        "tenant_key": {"type": "string"},
+        "private_ipv4": {"type": "string", "format": "ipv4"},
+        "at": {"type": "string"},
+        "binding": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/binding"}]}
+      }
     }
   }
 }

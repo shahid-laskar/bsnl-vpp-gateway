@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from .bindings import check_activation_mac
 from .contract import session_key_for
 from .store import DesiredStateStore, StoreTransaction, request_hash
 
@@ -57,6 +58,7 @@ class SubscriberLifecycle:
                 raise ValueError("authenticated subscriber requires a future valid_until")
             state = txn.read() or {}
             self._validate_tenant(state, subscriber["tenant_key"], subscriber["private_ipv4"])
+            check_activation_mac(txn, state, subscriber, actor)
             items = state.setdefault("subscribers", [])
             existing = next((x for x in items if x.get("session_key") == subscriber["session_key"]), None)
             if (existing is not None and existing.get("state") in INACTIVE_STATES
