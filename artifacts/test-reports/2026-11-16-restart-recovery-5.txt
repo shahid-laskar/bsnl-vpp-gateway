@@ -1,0 +1,297 @@
+# tests/lab/test_restart_recovery.sh 5, 2026-11-16T11:52:32Z, main d9041f1 + dhcp_qualification capture fix
+=== run 1/5: restarting vpp
+ok   unit vpp active
+ok   unit bsnl-vpp-lab-links active
+ok   unit bsnl-vpp-portal-path active
+ok   unit isc-kea-dhcp4-server active
+ok   unit unbound active
+ok   unit bsnl-vpp-controller active
+ok   vpp host-vpp-access up
+ok   vpp host-vpp-wan up
+ok   vpp host-vpp-access.101 up
+ok   vpp 10.9.101.1/24 on host-vpp-access.101
+ok   vpp 198.51.100.1/24 on host-vpp-wan
+ok   vpp route 10.44.0.0/22 via 198.51.100.2
+ok   vpp dhcp proxy -> 198.51.100.2
+ok   vpp pre-auth ACL attached input on host-vpp-access.101
+ok   nft table ip bsnl_vpp_portal
+ok   kea config readable by _kea
+ok   kea config valid
+ok   unbound config valid
+ok   unbound answers the portal name
+ok   controller can use the unbound control socket
+ok   no orphan dhclient on lab VLANs
+HEALTHY
+fixture healthy after 3 s
+{
+  "namespace": "bsnl-qual",
+  "checks": {
+    "capture_ready": {
+      "ok": true
+    },
+    "dhcp_lease": {
+      "ok": true,
+      "addresses": [
+        "10.9.101.24"
+      ],
+      "seconds": 0.14
+    },
+    "dhcp_option_114": {
+      "ok": true,
+      "expected": "https://wifi.bsnl.co.in/portal/captive-api/"
+    },
+    "dns": {
+      "ok": true,
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "portal_http": {
+      "ok": true,
+      "status": "200"
+    },
+    "preauth_deny": {
+      "ok": true,
+      "probe": "198.51.100.1"
+    }
+  },
+  "dhcp_log": "Internet Systems Consortium DHCP Client 4.4.3-P1\nCopyright 2004-2022 Internet Systems Consortium.\nAll rights reserved.\nFor info, please visit https://www.isc.org/software/dhcp/\n\ncan't create /tmp/bsnl-vpp-qual-s0kv24di/leases: Permission denied\nListening on LPF/eth0.200.101/aa:52:0b:95:47:ea\nSending on   LPF/eth0.200.101/aa:52:0b:95:47:ea\nSending on   Socket/fallback\nxid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement\nxid: rand init seed (0x6a85ef58) built using gethostid\nDHCPDISCOVER on eth0.200.101 to 255.255.255.255 port 67 interval 3 (xid=0x7afaef7c)\nDHCPOFFER of 10.9.101.24 from 10.9.101.1\nDHCPREQUEST for 10.9.101.24 on eth0.200.101 to 255.255.255.255 port 67 (xid=0x7ceffa7a)\nDHCPACK of 10.9.101.24 from 10.9.101.1 (xid=0x7afaef7c)\ncan't create /tmp/bsnl-vpp-qual-s0kv24di/leases: Permission denied\nbound to 10.9.101.24 -- renewal in 137 seconds.\nCan't create /tmp/bsnl-vpp-qual-s0kv24di/dhclient.pid: Permission denied\n",
+  "ok": true
+}
+=== run 2/5: restarting vpp
+ok   unit vpp active
+ok   unit bsnl-vpp-lab-links active
+ok   unit bsnl-vpp-portal-path active
+ok   unit isc-kea-dhcp4-server active
+ok   unit unbound active
+ok   unit bsnl-vpp-controller active
+ok   vpp host-vpp-access up
+ok   vpp host-vpp-wan up
+ok   vpp host-vpp-access.101 up
+ok   vpp 10.9.101.1/24 on host-vpp-access.101
+ok   vpp 198.51.100.1/24 on host-vpp-wan
+ok   vpp route 10.44.0.0/22 via 198.51.100.2
+ok   vpp dhcp proxy -> 198.51.100.2
+ok   vpp pre-auth ACL attached input on host-vpp-access.101
+ok   nft table ip bsnl_vpp_portal
+ok   kea config readable by _kea
+ok   kea config valid
+ok   unbound config valid
+ok   unbound answers the portal name
+ok   controller can use the unbound control socket
+ok   no orphan dhclient on lab VLANs
+HEALTHY
+fixture healthy after 2 s
+{
+  "namespace": "bsnl-qual",
+  "checks": {
+    "capture_ready": {
+      "ok": true
+    },
+    "dhcp_lease": {
+      "ok": true,
+      "addresses": [
+        "10.9.101.25"
+      ],
+      "seconds": 0.13
+    },
+    "dhcp_option_114": {
+      "ok": true,
+      "expected": "https://wifi.bsnl.co.in/portal/captive-api/"
+    },
+    "dns": {
+      "ok": true,
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "portal_http": {
+      "ok": true,
+      "status": "200"
+    },
+    "preauth_deny": {
+      "ok": true,
+      "probe": "198.51.100.1"
+    }
+  },
+  "dhcp_log": "Internet Systems Consortium DHCP Client 4.4.3-P1\nCopyright 2004-2022 Internet Systems Consortium.\nAll rights reserved.\nFor info, please visit https://www.isc.org/software/dhcp/\n\ncan't create /tmp/bsnl-vpp-qual-ad3ouwz7/leases: Permission denied\nListening on LPF/eth0.200.101/52:99:84:49:1b:c6\nSending on   LPF/eth0.200.101/52:99:84:49:1b:c6\nSending on   Socket/fallback\nxid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement\nxid: rand init seed (0x6a85ef5e) built using gethostid\nDHCPDISCOVER on eth0.200.101 to 255.255.255.255 port 67 interval 3 (xid=0xc58fca0f)\nDHCPOFFER of 10.9.101.25 from 10.9.101.1\nDHCPREQUEST for 10.9.101.25 on eth0.200.101 to 255.255.255.255 port 67 (xid=0xfca8fc5)\nDHCPACK of 10.9.101.25 from 10.9.101.1 (xid=0xc58fca0f)\ncan't create /tmp/bsnl-vpp-qual-ad3ouwz7/leases: Permission denied\nbound to 10.9.101.25 -- renewal in 131 seconds.\nCan't create /tmp/bsnl-vpp-qual-ad3ouwz7/dhclient.pid: Permission denied\n",
+  "ok": true
+}
+=== run 3/5: restarting vpp
+ok   unit vpp active
+ok   unit bsnl-vpp-lab-links active
+ok   unit bsnl-vpp-portal-path active
+ok   unit isc-kea-dhcp4-server active
+ok   unit unbound active
+ok   unit bsnl-vpp-controller active
+ok   vpp host-vpp-access up
+ok   vpp host-vpp-wan up
+ok   vpp host-vpp-access.101 up
+ok   vpp 10.9.101.1/24 on host-vpp-access.101
+ok   vpp 198.51.100.1/24 on host-vpp-wan
+ok   vpp route 10.44.0.0/22 via 198.51.100.2
+ok   vpp dhcp proxy -> 198.51.100.2
+ok   vpp pre-auth ACL attached input on host-vpp-access.101
+ok   nft table ip bsnl_vpp_portal
+ok   kea config readable by _kea
+ok   kea config valid
+ok   unbound config valid
+ok   unbound answers the portal name
+ok   controller can use the unbound control socket
+ok   no orphan dhclient on lab VLANs
+HEALTHY
+fixture healthy after 2 s
+{
+  "namespace": "bsnl-qual",
+  "checks": {
+    "capture_ready": {
+      "ok": true
+    },
+    "dhcp_lease": {
+      "ok": true,
+      "addresses": [
+        "10.9.101.26"
+      ],
+      "seconds": 0.11
+    },
+    "dhcp_option_114": {
+      "ok": true,
+      "expected": "https://wifi.bsnl.co.in/portal/captive-api/"
+    },
+    "dns": {
+      "ok": true,
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "portal_http": {
+      "ok": true,
+      "status": "200"
+    },
+    "preauth_deny": {
+      "ok": true,
+      "probe": "198.51.100.1"
+    }
+  },
+  "dhcp_log": "Internet Systems Consortium DHCP Client 4.4.3-P1\nCopyright 2004-2022 Internet Systems Consortium.\nAll rights reserved.\nFor info, please visit https://www.isc.org/software/dhcp/\n\ncan't create /tmp/bsnl-vpp-qual-yx22s0x4/leases: Permission denied\nListening on LPF/eth0.200.101/c6:0c:22:20:50:96\nSending on   LPF/eth0.200.101/c6:0c:22:20:50:96\nSending on   Socket/fallback\nxid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement\nxid: rand init seed (0x6a85ef67) built using gethostid\nDHCPDISCOVER on eth0.200.101 to 255.255.255.255 port 67 interval 3 (xid=0x4434a82c)\nDHCPOFFER of 10.9.101.26 from 10.9.101.1\nDHCPREQUEST for 10.9.101.26 on eth0.200.101 to 255.255.255.255 port 67 (xid=0x2ca83444)\nDHCPACK of 10.9.101.26 from 10.9.101.1 (xid=0x4434a82c)\ncan't create /tmp/bsnl-vpp-qual-yx22s0x4/leases: Permission denied\nbound to 10.9.101.26 -- renewal in 142 seconds.\nCan't create /tmp/bsnl-vpp-qual-yx22s0x4/dhclient.pid: Permission denied\n",
+  "ok": true
+}
+=== run 4/5: restarting vpp
+ok   unit vpp active
+ok   unit bsnl-vpp-lab-links active
+ok   unit bsnl-vpp-portal-path active
+ok   unit isc-kea-dhcp4-server active
+ok   unit unbound active
+ok   unit bsnl-vpp-controller active
+ok   vpp host-vpp-access up
+ok   vpp host-vpp-wan up
+ok   vpp host-vpp-access.101 up
+ok   vpp 10.9.101.1/24 on host-vpp-access.101
+ok   vpp 198.51.100.1/24 on host-vpp-wan
+ok   vpp route 10.44.0.0/22 via 198.51.100.2
+ok   vpp dhcp proxy -> 198.51.100.2
+ok   vpp pre-auth ACL attached input on host-vpp-access.101
+ok   nft table ip bsnl_vpp_portal
+ok   kea config readable by _kea
+ok   kea config valid
+ok   unbound config valid
+ok   unbound answers the portal name
+ok   controller can use the unbound control socket
+ok   no orphan dhclient on lab VLANs
+HEALTHY
+fixture healthy after 3 s
+{
+  "namespace": "bsnl-qual",
+  "checks": {
+    "capture_ready": {
+      "ok": true
+    },
+    "dhcp_lease": {
+      "ok": true,
+      "addresses": [
+        "10.9.101.27"
+      ],
+      "seconds": 0.13
+    },
+    "dhcp_option_114": {
+      "ok": true,
+      "expected": "https://wifi.bsnl.co.in/portal/captive-api/"
+    },
+    "dns": {
+      "ok": true,
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "portal_http": {
+      "ok": true,
+      "status": "200"
+    },
+    "preauth_deny": {
+      "ok": true,
+      "probe": "198.51.100.1"
+    }
+  },
+  "dhcp_log": "Internet Systems Consortium DHCP Client 4.4.3-P1\nCopyright 2004-2022 Internet Systems Consortium.\nAll rights reserved.\nFor info, please visit https://www.isc.org/software/dhcp/\n\ncan't create /tmp/bsnl-vpp-qual-gse9rvzi/leases: Permission denied\nListening on LPF/eth0.200.101/b6:b8:54:d8:b0:f5\nSending on   LPF/eth0.200.101/b6:b8:54:d8:b0:f5\nSending on   Socket/fallback\nxid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement\nxid: rand init seed (0x6a85ef6d) built using gethostid\nDHCPDISCOVER on eth0.200.101 to 255.255.255.255 port 67 interval 3 (xid=0x4346ec7f)\nDHCPOFFER of 10.9.101.27 from 10.9.101.1\nDHCPREQUEST for 10.9.101.27 on eth0.200.101 to 255.255.255.255 port 67 (xid=0x7fec4643)\nDHCPACK of 10.9.101.27 from 10.9.101.1 (xid=0x4346ec7f)\ncan't create /tmp/bsnl-vpp-qual-gse9rvzi/leases: Permission denied\nbound to 10.9.101.27 -- renewal in 134 seconds.\nCan't create /tmp/bsnl-vpp-qual-gse9rvzi/dhclient.pid: Permission denied\n",
+  "ok": true
+}
+=== run 5/5: restarting vpp
+ok   unit vpp active
+ok   unit bsnl-vpp-lab-links active
+ok   unit bsnl-vpp-portal-path active
+ok   unit isc-kea-dhcp4-server active
+ok   unit unbound active
+ok   unit bsnl-vpp-controller active
+ok   vpp host-vpp-access up
+ok   vpp host-vpp-wan up
+ok   vpp host-vpp-access.101 up
+ok   vpp 10.9.101.1/24 on host-vpp-access.101
+ok   vpp 198.51.100.1/24 on host-vpp-wan
+ok   vpp route 10.44.0.0/22 via 198.51.100.2
+ok   vpp dhcp proxy -> 198.51.100.2
+ok   vpp pre-auth ACL attached input on host-vpp-access.101
+ok   nft table ip bsnl_vpp_portal
+ok   kea config readable by _kea
+ok   kea config valid
+ok   unbound config valid
+ok   unbound answers the portal name
+ok   controller can use the unbound control socket
+ok   no orphan dhclient on lab VLANs
+HEALTHY
+fixture healthy after 2 s
+{
+  "namespace": "bsnl-qual",
+  "checks": {
+    "capture_ready": {
+      "ok": true
+    },
+    "dhcp_lease": {
+      "ok": true,
+      "addresses": [
+        "10.9.101.28"
+      ],
+      "seconds": 0.12
+    },
+    "dhcp_option_114": {
+      "ok": true,
+      "expected": "https://wifi.bsnl.co.in/portal/captive-api/"
+    },
+    "dns": {
+      "ok": true,
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "portal_http": {
+      "ok": true,
+      "status": "200"
+    },
+    "preauth_deny": {
+      "ok": true,
+      "probe": "198.51.100.1"
+    }
+  },
+  "dhcp_log": "Internet Systems Consortium DHCP Client 4.4.3-P1\nCopyright 2004-2022 Internet Systems Consortium.\nAll rights reserved.\nFor info, please visit https://www.isc.org/software/dhcp/\n\ncan't create /tmp/bsnl-vpp-qual-esdktrmu/leases: Permission denied\nListening on LPF/eth0.200.101/02:96:60:8f:8b:be\nSending on   LPF/eth0.200.101/02:96:60:8f:8b:be\nSending on   Socket/fallback\nxid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement\nxid: rand init seed (0x6a85ef73) built using gethostid\nDHCPDISCOVER on eth0.200.101 to 255.255.255.255 port 67 interval 3 (xid=0x5bc18113)\nDHCPOFFER of 10.9.101.28 from 10.9.101.1\nDHCPREQUEST for 10.9.101.28 on eth0.200.101 to 255.255.255.255 port 67 (xid=0x1381c15b)\nDHCPACK of 10.9.101.28 from 10.9.101.1 (xid=0x5bc18113)\ncan't create /tmp/bsnl-vpp-qual-esdktrmu/leases: Permission denied\nbound to 10.9.101.28 -- renewal in 119 seconds.\nCan't create /tmp/bsnl-vpp-qual-esdktrmu/dhclient.pid: Permission denied\n",
+  "ok": true
+}
+PASS: 5 restart cycles

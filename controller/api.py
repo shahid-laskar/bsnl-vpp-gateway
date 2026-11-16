@@ -77,6 +77,13 @@ class SubscriberApiHandler(BaseHTTPRequestHandler):
         return self.rfile.read(int(raw_length))
 
     def do_GET(self) -> None:
+        try:
+            self._do_get()
+        except Exception as exc:  # never drop the connection without a reply
+            LOG.exception("GET %s failed", self.path.partition("?")[0])
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"internal error: {type(exc).__name__}"})
+
+    def _do_get(self) -> None:
         path, _, query = self.path.partition("?")
         if path == "/health":
             self._json(HTTPStatus.OK, {"status": "ok", "contract_version": CONTRACT_VERSION})

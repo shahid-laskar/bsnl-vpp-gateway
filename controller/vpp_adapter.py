@@ -132,8 +132,21 @@ class VppApiAdapter:
         }
 
     def observed_state(self) -> dict[str, Any]:
+        """Never raises: after a VPP restart the old API socket is a broken
+        pipe, so reconnect first and report a transport failure as state."""
         with self._lock:
-            return self._observed_state()
+            self.ensure_connected()
+            try:
+                return self._observed_state()
+            except Exception as exc:
+                self._mark_broken(f"observe failed: {type(exc).__name__}: {exc}")
+                return {"mode": "vpp-papi", "vpp_connected": False, "api_crc_ok": self.crc_ok, "error": self.error, "objects": []}
+
+    def _mark_broken(self, error: str) -> None:
+        """Drop a dead client so the next ensure_connected() reconnects."""
+        LOG.warning("%s; will reconnect", error)
+        self.disconnect()
+        self.error = error
 
     def _observed_state(self) -> dict[str, Any]:
         if not (self.connected and self.crc_ok):
@@ -145,6 +158,11 @@ class VppApiAdapter:
         validate_desired_state(desired_state)
         if not self.enable_writes:
             self.last_apply_writes = []
+            # Observe mode still checks liveness every reconcile tick, so a VPP
+            # restart is followed by a reconnect and capabilities() stays
+            # truthful (it used to report a dead socket as connected).
+            with self._lock:
+                self.ensure_connected()
             return phase4_object_keys(desired_state, self.port_map)
         with self._lock:
             if not self.ensure_connected():

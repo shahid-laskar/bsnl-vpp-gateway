@@ -48,6 +48,22 @@ def kill_namespace_processes(ns: str) -> None:
         time.sleep(0.5)
 
 
+def wait_for_listening(process: subprocess.Popen, timeout: float) -> bool:
+    """True once tcpdump has printed its "listening on" line on stderr."""
+    import select
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        ready, _, _ = select.select([process.stderr], [], [], max(0.0, deadline - time.monotonic()))
+        if not ready:
+            break
+        line = process.stderr.readline()
+        if not line:
+            return False  # tcpdump exited
+        if "listening on" in line:
+            return True
+    return False
+
+
 def cleanup(ns: str, host_if: str) -> None:
     kill_namespace_processes(ns)
     try_run("ip", "netns", "del", ns)
@@ -108,8 +124,15 @@ def main() -> int:
         # Frames on host_if are double-tagged: a plain "udp port 67" filter
         # does not look past the VLAN headers and captured nothing, so the
         # option 114 check always failed. Each "vlan" shifts the offsets.
-        tcpdump = subprocess.Popen(["tcpdump", "-ni", host_if, "-c", "8", "-w", str(capture), "vlan and vlan and (udp port 67 or udp port 68)"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(1)  # let tcpdump attach before the DISCOVER goes out
+        # --immediate-mode: Linux TPACKET_V3 hands packets to tcpdump in
+        # blocks after a ~1 s buffer timeout; the DHCP exchange takes ~0.1 s and
+        # tcpdump is stopped right after it, so without this the kernel counted
+        # the packets ("received by filter") but none reached the file, and the
+        # option 114 check failed intermittently. -U flushes each packet to the
+        # file; waiting for "listening on" replaces a fixed sleep.
+        tcpdump = subprocess.Popen(["tcpdump", "--immediate-mode", "-U", "-ni", host_if, "-c", "8", "-w", str(capture), "vlan and vlan and (udp port 67 or udp port 68)"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        checks["capture_ready"] = {"ok": wait_for_listening(tcpdump, timeout=10)}
         started = time.monotonic()
         try:
             dhcp = try_run(*nsx, "dhclient", "-v", "-1", "-pf", str(pidfile), "-lf", str(lease), qinq_if, timeout=args.dhcp_timeout + 5)
