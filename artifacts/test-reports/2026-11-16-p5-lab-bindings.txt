@@ -1,0 +1,68 @@
+# P5-T4/T6 lab verification, 2026-11-16T11:20:49Z, gateway main 8f7ca97 + dhcp_qualification capture-filter fix
+## controller unit
+SupplementaryGroups=_kea
+ActiveState=active
+ExecStart=/usr/bin/python3 -m controller.main --desired-state /opt/bsnl-vpp-gateway/config/lab/desired-state.json --store /var/lib/bsnl-vpp-gateway/controller.sqlite3 --audit /var/lib/bsnl-vpp-gateway/audit.jsonl --serve --listen 10.44.0.207 --port 8787 --tls-cert /etc/bsnl-vpp-gateway/tls/server.crt --tls-key /etc/bsnl-vpp-gateway/tls/server.key --tls-ca /etc/bsnl-vpp-gateway/tls/ca.crt --observe-vpp --port-map access0=host-vpp-access --kea-lease-file /var/lib/kea/kea-leases4.csv
+## GET /v1/capabilities
+{"api_crc_ok": true, "api_crc_snapshot": "26.10", "contract_version": "v1", "error": null, "intra_tenant_policy_enforced": false, "managed_objects": ["qinq_subinterface", "address", "vrf", "tenant_acl"], "mode": "vpp-papi", "policy_error": null, "socket": "/run/vpp/api.sock", "subscriber_policy_enforced": false, "vpp_connected": true, "vpp_version": "26.10-release", "writes_enabled": false}
+## dhcp_qualification (run 11:16 UTC, after filter fix)
+{
+  "namespace": "bsnl-qual",
+  "checks": {
+    "dhcp_lease": {
+      "ok": true,
+      "addresses": [
+        "10.9.101.8"
+      ],
+      "seconds": 0.12
+    },
+    "dhcp_option_114": {
+      "ok": true,
+      "expected": "https://wifi.bsnl.co.in/portal/captive-api/"
+    },
+    "dns": {
+      "ok": true,
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "portal_http": {
+      "ok": true,
+      "status": "200"
+    },
+    "preauth_deny": {
+      "ok": true,
+      "probe": "198.51.100.1"
+    }
+  },
+  "dhcp_log": "Internet Systems Consortium DHCP Client 4.4.3-P1\nCopyright 2004-2022 Internet Systems Consortium.\nAll rights reserved.\nFor info, please visit https://www.isc.org/software/dhcp/\n\ncan't create /tmp/bsnl-vpp-qual-83elm2z5/leases: Permission denied\nListening on LPF/eth0.200.101/7a:96:13:50:9c:55\nSending on   LPF/eth0.200.101/7a:96:13:50:9c:55\nSending on   Socket/fallback\nxid: warning: no netdev with useable HWADDR found for seed's uniqueness enforcement\nxid: rand init seed (0x6a85e71b) built using gethostid\nDHCPDISCOVER on eth0.200.101 to 255.255.255.255 port 67 interval 3 (xid=0xde952153)\nDHCPOFFER of 10.9.101.8 from 10.9.101.1\nDHCPREQUEST for 10.9.101.8 on eth0.200.101 to 255.255.255.255 port 67 (xid=0x532195de)\nDHCPACK of 10.9.101.8 from 10.9.101.1 (xid=0xde952153)\ncan't create /tmp/bsnl-vpp-qual-83elm2z5/leases: Permission denied\nbound to 10.9.101.8 -- renewal in 123 seconds.\nCan't create /tmp/bsnl-vpp-qual-83elm2z5/dhclient.pid: Permission denied\n",
+  "ok": true
+}
+## Kea memfile (current file)
+address,hwaddr,client_id,valid_lifetime,expire,subnet_id,fqdn_fwd,fqdn_rev,hostname,state,user_context,pool_id
+## bindings table
+(1, '10.9.101.5', 'fa:25:b8:6d:16:42', '2026-11-16 11:15:47', '2026-11-16 11:20:47', '2026-11-16 11:20:47', 'lease_expired')
+(2, '10.9.101.6', '92:ca:9f:c9:ed:fc', '2026-11-16 11:16:05', None, '2026-11-16 11:21:05', None)
+(3, '10.9.101.7', 'e2:54:45:85:88:88', '2026-11-16 11:16:18', None, '2026-11-16 11:21:18', None)
+(4, '10.9.101.8', '7a:96:13:50:9c:55', '2026-11-16 11:16:42', None, '2026-11-16 11:21:42', None)
+## binding audit events and lease->binding latency (audit ts - lease CLTT)
+{"actor": "kea-lease-sync", "event": "binding.opened", "lease_expire": "2026-11-16T11:20:47+00:00", "mac": "fa:25:b8:6d:16:42", "private_ipv4": "10.9.101.5", "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101", "ts": "2026-11-16T11:15:48.543503+00:00", "valid_from": "2026-11-16T11:15:47+00:00"}
+   latency_seconds 1.54
+{"actor": "kea-lease-sync", "event": "binding.opened", "lease_expire": "2026-11-16T11:21:05+00:00", "mac": "92:ca:9f:c9:ed:fc", "private_ipv4": "10.9.101.6", "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101", "ts": "2026-11-16T11:16:05.591288+00:00", "valid_from": "2026-11-16T11:16:05+00:00"}
+   latency_seconds 0.59
+{"actor": "kea-lease-sync", "event": "binding.opened", "lease_expire": "2026-11-16T11:21:18+00:00", "mac": "e2:54:45:85:88:88", "private_ipv4": "10.9.101.7", "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101", "ts": "2026-11-16T11:16:19.641279+00:00", "valid_from": "2026-11-16T11:16:18+00:00"}
+   latency_seconds 1.64
+{"actor": "kea-lease-sync", "event": "binding.opened", "lease_expire": "2026-11-16T11:21:42+00:00", "mac": "7a:96:13:50:9c:55", "private_ipv4": "10.9.101.8", "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101", "ts": "2026-11-16T11:16:42.702245+00:00", "valid_from": "2026-11-16T11:16:42+00:00"}
+   latency_seconds 0.7
+{"actor": "kea-lease-sync", "event": "binding.closed", "mac": "fa:25:b8:6d:16:42", "private_ipv4": "10.9.101.5", "reason": "lease_expired", "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101", "ts": "2026-11-16T11:20:47.180336+00:00", "valid_to": "2026-11-16T11:20:47+00:00"}
+## GET /v1/bindings 10.9.101.5 now (expired lease -> null)
+{"at": "2026-11-16T11:20:49.533967+00:00", "binding": null, "contract_version": "v1", "private_ipv4": "10.9.101.5", "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101"}
+## GET /v1/bindings 10.9.101.5 at 11:18 UTC (history)
+{"at": "2026-11-16T11:18:00+00:00", "binding": {"client_id": null, "close_reason": "lease_expired", "hostname": "bsnl-vpp", "lease_expire": "2026-11-16T11:20:47+00:00", "mac": "fa:25:b8:6d:16:42", "private_ipv4": "10.9.101.5", "source": "kea-memfile", "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101", "valid_from": "2026-11-16T11:15:47+00:00", "valid_to": "2026-11-16T11:20:47+00:00"}, "contract_version": "v1", "private_ipv4": "10.9.101.5", "tenant_key": "lab-vpp-01/host-vpp-access/0x8100/200/101"}
+## relay-leg capture br-wan (11:16:18 UTC): option 114 in OFFER and ACK = https://wifi.bsnl.co.in/portal/captive-api/
+## controller log
+Nov 16 11:15:48 bsnl-vpp python3[156163]: INFO bsnl_vpp.bindings: lease sync: {'opened': 1, 'closed': 0, 'renewed': 0, 'unmapped': 0, 'out_of_subnet': 0}
+Nov 16 11:16:05 bsnl-vpp python3[156163]: INFO bsnl_vpp.bindings: lease sync: {'opened': 1, 'closed': 0, 'renewed': 0, 'unmapped': 0, 'out_of_subnet': 0}
+Nov 16 11:16:19 bsnl-vpp python3[156163]: INFO bsnl_vpp.bindings: lease sync: {'opened': 1, 'closed': 0, 'renewed': 0, 'unmapped': 0, 'out_of_subnet': 0}
+Nov 16 11:16:42 bsnl-vpp python3[156163]: INFO bsnl_vpp.bindings: lease sync: {'opened': 1, 'closed': 0, 'renewed': 0, 'unmapped': 0, 'out_of_subnet': 0}
+Nov 16 11:20:47 bsnl-vpp python3[156163]: INFO bsnl_vpp.bindings: lease sync: {'opened': 0, 'closed': 1, 'renewed': 0, 'unmapped': 0, 'out_of_subnet': 0}

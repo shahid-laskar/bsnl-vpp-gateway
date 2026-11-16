@@ -105,7 +105,11 @@ def main() -> int:
     try:
         nsx = setup_namespace(ns, host_if, args.bridge, args.outer_vlan, args.inner_vlan)
 
-        tcpdump = subprocess.Popen(["tcpdump", "-ni", host_if, "-c", "8", "-w", str(capture), "udp port 67 or udp port 68"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Frames on host_if are double-tagged: a plain "udp port 67" filter
+        # does not look past the VLAN headers and captured nothing, so the
+        # option 114 check always failed. Each "vlan" shifts the offsets.
+        tcpdump = subprocess.Popen(["tcpdump", "-ni", host_if, "-c", "8", "-w", str(capture), "vlan and vlan and (udp port 67 or udp port 68)"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1)  # let tcpdump attach before the DISCOVER goes out
         started = time.monotonic()
         try:
             dhcp = try_run(*nsx, "dhclient", "-v", "-1", "-pf", str(pidfile), "-lf", str(lease), qinq_if, timeout=args.dhcp_timeout + 5)

@@ -1,6 +1,6 @@
 # BSNL VPP Gateway — Implementation Status
 
-Updated: 2026-11-16 (remediation steps 1–6 merged to `main`; P5-T4/T6 on `feat/p5-lease-bindings`).
+Updated: 2026-11-16 (remediation steps 1–6 and P5-T4/T6 on `main`; P5 lab run done).
 Plan: `/opt/captive-portal/captive-portal-multitenant/docs/vpp/FINAL_IMPLEMENTATION_PLAN.md`.
 
 This is a **development lab** on Ubuntu VM `10.44.0.207` (VPP 26.10 over
@@ -22,7 +22,7 @@ Every gate row carries one status and links its evidence (FINAL plan P-15).
 Evidence lives in `artifacts/` (this repo) and
 `docs/vpp/evidence/` (portal repo). Test reports are regenerated per change.
 
-## Current runtime state (2026-11-13)
+## Current runtime state (2026-11-16)
 
 - The lab dataplane was **down** from 2026-11-13 06:35 UTC (vppctl oneshot
   units raced the VPP restart; Kea config made unreadable by the host-service
@@ -31,16 +31,16 @@ Evidence lives in `artifacts/` (this repo) and
   dataplane checks afterwards (its one false failure was a check bug, fixed).
 - The 5-cycle restart test (`tests/lab/test_restart_recovery.sh`) has **not
   yet passed** end to end (stopped on that false failure): **READY-TO-RUN**.
-- The running controller is the step-3 build (system Python, SQLite, mTLS,
-  dry-run). Steps 4–5 code is committed but **not installed**; VPP writes are
-  off.
+- 2026-11-16: the controller unit from `main` is installed and running in
+  observe mode (`--observe-vpp`, API CRCs OK against VPP 26.10, writes **off**)
+  with Kea lease sync (`SupplementaryGroups=_kea`, `--kea-lease-file`). Kea was
+  reinstalled from the repo: option 114 now carries the RFC 8908 API URI.
+  Backup of the replaced files: `/root/bsnl-p5-install-20261116T111529.tgz`.
 
 ## Branches
 
-Remediation steps 1–6 are on `main` in both repositories (gateway `main` =
-`756ea8e`, portal `vpp-setup` = `a123eba`). Phase 5 lease bindings (P5-T4/T6):
-gateway `feat/p5-lease-bindings`, portal `feat/p5-vpp-mac-lookup`
-(not pushed, not merged).
+Remediation steps 1–6 and Phase 5 lease bindings (P5-T4/T6) are merged:
+gateway `main`, portal `vpp-setup` (merge commit `a14bd2a`). Not pushed.
 
 ## Phase gates
 
@@ -88,7 +88,7 @@ gateway `feat/p5-lease-bindings`, portal `feat/p5-vpp-mac-lookup`
 | Second apply makes zero VPP writes | TESTED | `test_create_then_second_apply_makes_zero_writes` |
 | VPP restart restores desired state | TESTED (fake) / READY-TO-RUN | `test_vpp_restart_is_restored_and_drift_repaired` |
 | Refuse on API CRC mismatch | TESTED | `artifacts/api-crc-26.10.json`, `test_crc_mismatch_refuses_to_operate` |
-| Live CRC check against running VPP | READY-TO-RUN | `sudo -u bsnl-vpp python3 -m controller.main --observe-vpp --port-map access0=host-vpp-access --desired-state config/lab/desired-state.json --store /tmp/obs.sqlite3 --audit /tmp/obs.jsonl` → expect `"api_crc_ok": true` |
+| Live CRC check against running VPP | VERIFIED (2026-11-16) | running controller reports `"api_crc_ok": true`, `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt`; command: | `sudo -u bsnl-vpp python3 -m controller.main --observe-vpp --port-map access0=host-vpp-access --desired-state config/lab/desired-state.json --store /tmp/obs.sqlite3 --audit /tmp/obs.jsonl` → expect `"api_crc_ok": true` |
 
 ### P4 — Interfaces and QinQ
 
@@ -105,10 +105,10 @@ gateway `feat/p5-lease-bindings`, portal `feat/p5-vpp-mac-lookup`
 | Gate | Status | Evidence |
 |---|---|---|
 | DORA via VPP DHCP proxy → Kea | VERIFIED (2026-11-11) | ADR-005; `controller/dhcp_qualification.py` |
-| Option 114 = RFC 8908 API URI | READY-TO-RUN | Kea template updated; reinstall Kea config, then `sudo python3 -m controller.dhcp_qualification` |
-| Lease → SubscriberBinding history (P5-T4) | TESTED / READY-TO-RUN | ADR-013; `controller/leases.py`, `controller/bindings.py`, `tests/test_bindings.py`. Install the controller unit (`SupplementaryGroups=_kea`, `--kea-lease-file`), run a DORA, query `/v1/bindings` |
-| MAC from bindings for VPP routers (P5-T6) | TESTED | `GET /v1/bindings`; portal `resolve_subscriber_mac`. VPP neighbour table as secondary source: OPEN |
-| Lease → binding latency p95 ≤ 2 s | TESTED (fixture) | 1 s poll; needs lab DORA evidence |
+| Option 114 = RFC 8908 API URI | VERIFIED (2026-11-16) | Kea reinstalled; OFFER/ACK carry `https://wifi.bsnl.co.in/portal/captive-api/`; `dhcp_qualification` all 5 checks pass (its capture filter now matches QinQ frames); `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt` |
+| Lease → SubscriberBinding history (P5-T4) | VERIFIED (2026-11-16) | ADR-013; 4 lab DORAs opened 4 bindings, an expired lease closed at its expiry (`lease_expired`), `/v1/bindings` returns current and historical bindings over mTLS; `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt` |
+| MAC from bindings for VPP routers (P5-T6) | TESTED (portal) / VERIFIED (controller API) | `GET /v1/bindings`; portal `resolve_subscriber_mac`. VPP neighbour table as secondary source: OPEN |
+| Lease → binding latency p95 ≤ 2 s | VERIFIED (lab, 4 samples) | 0.59–1.64 s (audit ts − lease CLTT), `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt`; not a load test |
 | Split DNS by authentication state (P5-T5) | OPEN | dnsmasq is a single-view lab fixture (ADR-006) |
 
 ### P6 — Captive policy
