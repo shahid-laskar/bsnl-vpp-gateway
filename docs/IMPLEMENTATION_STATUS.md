@@ -32,7 +32,8 @@ Evidence lives in `artifacts/` (this repo) and
 - The 5-cycle restart test (`tests/lab/test_restart_recovery.sh`) has **not
   yet passed** end to end (stopped on that false failure): **READY-TO-RUN**.
 - 2026-11-16: the controller unit from `main` is installed and running in
-  observe mode (`--observe-vpp`, API CRCs OK against VPP 26.10, writes **off**)
+  observe mode (`--observe-vpp`, API CRCs OK against VPP 26.10; writes were
+  turned **on** later the same day, see below)
   with Kea lease sync (`SupplementaryGroups=_kea`, `--kea-lease-file`). Kea was
   reinstalled from the repo: option 114 now carries the RFC 8908 API URI.
   Backup of the replaced files: `/root/bsnl-p5-install-20261116T111529.tgz`.
@@ -76,7 +77,7 @@ gateway `main`, portal `vpp-setup` (merge commit `a14bd2a`). Not pushed.
 |---|---|---|
 | Pinned packages recorded | VERIFIED | `versions.lock.yaml` |
 | Management NIC outside VPP | VERIFIED | `deployment/vpp/startup.conf.lab` (no `dpdk {}`), topology |
-| VPP restart returns to forwarding (≤ 30 s) | READY-TO-RUN | `sudo sh tests/lab/test_restart_recovery.sh 5` |
+| VPP restart returns to forwarding (≤ 30 s) | VERIFIED (2026-11-16) | 5/5 cycles, fixture healthy 2–3 s after restart, DHCP qualification green each cycle; `artifacts/test-reports/2026-11-16-restart-recovery-5.txt` |
 | Bundled DPDK version, NIC qualification, PDR/NDR | DEFERRED-HW | DPDK plugin disabled in the VM |
 
 ### P3 — Controller
@@ -89,7 +90,7 @@ gateway `main`, portal `vpp-setup` (merge commit `a14bd2a`). Not pushed.
 | Topology merged at boot; subscribers survive restart | TESTED | `controller/state.py`, `test_step4.py` |
 | Expiry enforced while serving | TESTED | `Reconciler`, `test_reconciler_expires_sessions_while_running` |
 | Second apply makes zero VPP writes | TESTED | `test_create_then_second_apply_makes_zero_writes` |
-| VPP restart restores desired state | TESTED (fake) / READY-TO-RUN | `test_vpp_restart_is_restored_and_drift_repaired` |
+| VPP restart restores desired state | VERIFIED, with a gap | Controller reconnects (broken-pipe fix, `tests/test_vpp_reconnect.py`) and re-applies tag/MTU/ACL on the next reconcile tick: measured 2 s, 29 s, 30 s. Until then the static ACL applies, so authenticated subscribers lose access for up to the reconcile interval (fail closed). Open: re-apply right after a VPP restart; `artifacts/test-reports/2026-11-16-vpp-writes-enabled.txt` |
 | Refuse on API CRC mismatch | TESTED | `artifacts/api-crc-26.10.json`, `test_crc_mismatch_refuses_to_operate` |
 | Live CRC check against running VPP | VERIFIED (2026-11-16) | running controller reports `"api_crc_ok": true`, `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt`; command: | `sudo -u bsnl-vpp python3 -m controller.main --observe-vpp --port-map access0=host-vpp-access --desired-state config/lab/desired-state.json --store /tmp/obs.sqlite3 --audit /tmp/obs.jsonl` → expect `"api_crc_ok": true` |
 
@@ -119,10 +120,11 @@ gateway `main`, portal `vpp-setup` (merge commit `a14bd2a`). Not pushed.
 
 | Gate | Status | Evidence |
 |---|---|---|
-| Pre-auth allowlist incl. DHCP unicast renew | TESTED / READY-TO-RUN | `controller/policy.py`; `sudo python3 -m controller.bypass_suite` |
-| Per-subscriber authorization enforced before API reply | TESTED | `test_step5.py` (`dataplane_enforced`) |
-| Protected destinations (management LAN, gateway host) | TESTED / READY-TO-RUN | bypass suite |
-| Bypass suite: DoT, foreign DNS, spoofed source, IPv6 RA/ND | READY-TO-RUN | `controller/bypass_suite.py` |
+| Controller-owned tenant ACL (`--enable-vpp-writes`) | VERIFIED (2026-11-16) | tagged ACL `bsnl:acl/<tenant>` (12 rules) bound as the only input ACL; static ACL 0 unbound; `artifacts/test-reports/2026-11-16-vpp-writes-enabled.txt` |
+| Pre-auth allowlist incl. DHCP unicast renew | VERIFIED (2026-11-16) | bypass suite pre-auth 14/14 with writes on; `artifacts/test-reports/2026-11-16-vpp-writes-enabled.txt` |
+| Per-subscriber authorization enforced before API reply | VERIFIED (2026-11-16) | activate/deactivate return `dataplane_enforced: true` in 67–85 ms (incl. DNS view reload); permit present/absent in VPP; authorized bypass suite passes; same IP is pre-auth again after logout; `artifacts/test-reports/2026-11-16-vpp-writes-enabled.txt` |
+| Protected destinations (management LAN, gateway host) | VERIFIED (2026-11-16) | bypass suite, both phases |
+| Bypass suite: DoT, foreign DNS, spoofed source, IPv6 RA/ND | VERIFIED (2026-11-16) | both phases pass. In the authorized phase the DoT probe is informational: VPP runs no TCP stack, so permitted TCP to its own address is punted and dropped without RST (trace: acl permit → ip4-receive → punt); ICMP is the authorized-path evidence |
 | RFC 8908 Captive Portal API | TESTED | portal `GET /portal/captive-api/`; live after django restart |
 | HTTP redirector + ABF for tcp/80 | OPEN | |
 | MACIP enforcement | OPEN | lab stays `log_only` |

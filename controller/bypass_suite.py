@@ -114,9 +114,15 @@ def main() -> int:
         expect("gateway_host_ssh_blocked", result == "timeout", result=result)
         expect("foreign_resolver_blocked", not dns(nsx, args.authorized_target))
         result = tcp(nsx, args.authorized_target, 853)
-        # In the authorized phase the lab target is permitted, so TCP is refused
-        # by VPP (no listener) rather than timing out.
-        expect("dot_853_to_target", result == ("refused" if authorized else "timeout"), result=result)
+        if authorized:
+            # Informational only: the ACL permits it (VPP trace 2026-11-16:
+            # acl 1 rule 11 permit), but VPP runs no TCP stack (session layer
+            # off), so TCP to its own address is punted and dropped without a
+            # RST; a timeout cannot tell permit from deny here.
+            # authorized_target_icmp is the authorized-path evidence.
+            expect("dot_853_to_target", True, result=result, informational="VPP has no TCP stack; see authorized_target_icmp")
+        else:
+            expect("dot_853_to_target", result == "timeout", result=result)
         expect("authorized_target_icmp", ping(nsx, args.authorized_target) == authorized, expected_reachable=authorized)
 
         # Spoofed source outside the tenant subnet is never forwarded

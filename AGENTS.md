@@ -121,7 +121,11 @@ dnsmasq --test
   409 (`StaleEventError`); a new login must use a new session_id.
 - `VppApiAdapter` (`--observe-vpp`, `--enable-vpp-writes`): CRC-checked
   against `artifacts/api-crc-26.10.json` (regenerate with
-  `tools/api_crc_snapshot.py` on every VPP upgrade). Writes are off by default.
+  `tools/api_crc_snapshot.py` on every VPP upgrade). Writes are off by default
+  in code; the lab unit runs with `--enable-vpp-writes` since 2026-11-16
+  (controller owns the tenant sub-interface and ACL). After a VPP restart the
+  static ACL from `bsnl-lab.cli` applies until the next reconcile tick (up to
+  30 s, measured): authenticated subscribers lose access meanwhile.
   `subscriber_policy_enforced` stays false until step 5, so the portal keeps
   sessions out of `fully_active`.
 - Decision (lab, until D-06): tenants use VRF 0 (shared FIB). The live

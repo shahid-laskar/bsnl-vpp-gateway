@@ -1,0 +1,318 @@
+# VPP writes enabled (--enable-vpp-writes), 2026-11-16T11:56:00Z, main baa330c + unit change
+## capabilities
+{"api_crc_ok": true, "api_crc_snapshot": "26.10", "contract_version": "v1", "error": null, "intra_tenant_policy_enforced": true, "managed_objects": ["qinq_subinterface", "address", "vrf", "tenant_acl"], "mode": "vpp-papi", "policy_error": null, "socket": "/run/vpp/api.sock", "subscriber_policy_enforced": true, "vpp_connected": true, "vpp_version": "26.10-release", "writes_enabled": true}
+## VPP ACLs
+acl-index 0 count 6 tag {cli}
+          0: ipv4 permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 80
+          1: ipv4 permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 443
+          2: ipv4 permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 1 sport 0-65535 dport 0-65535
+          3: ipv4 permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 17 sport 0-65535 dport 53
+          4: ipv4 permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 6 sport 0-65535 dport 53
+          5: ipv4 permit src 0.0.0.0/0 dst 255.255.255.255/32 proto 17 sport 68 dport 67
+  applied inbound on sw_if_index: 
+  used in lookup context index: 
+acl-index 1 count 12 tag {bsnl:acl/lab-vpp-01/host-vpp-access/0x8100/200/101}
+          0: ipv4 permit src 0.0.0.0/0 dst 255.255.255.255/32 proto 17 sport 68 dport 67
+          1: ipv4 permit src 10.9.101.0/24 dst 10.9.101.1/32 proto 17 sport 68 dport 67
+          2: ipv4 permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 17 sport 68 dport 67
+          3: ipv4 permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 17 sport 0-65535 dport 53
+          4: ipv4 permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 6 sport 0-65535 dport 53
+          5: ipv4 permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 80
+          6: ipv4 permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 443
+          7: ipv4 permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 1 sport 0-255 dport 0-255
+          8: ipv4 deny src 0.0.0.0/0 dst 10.44.0.0/22 proto 0 sport 0-65535 dport 0-65535
+          9: ipv4 deny src 0.0.0.0/0 dst 198.51.100.0/24 proto 0 sport 0-65535 dport 0-65535
+         10: ipv4 deny src 0.0.0.0/0 dst 10.9.101.0/24 proto 0 sport 0-65535 dport 0-65535
+         11: ipv4 deny src 0.0.0.0/0 dst 0.0.0.0/0 proto 0 sport 0-65535 dport 0-65535
+  applied inbound on sw_if_index: 3
+  used in lookup context index: 0
+sw_if_index 0:
+sw_if_index 1:
+sw_if_index 2:
+sw_if_index 3:
+  input acl(s): 1
+## lab check
+ok   unit vpp active
+ok   unit bsnl-vpp-lab-links active
+ok   unit bsnl-vpp-portal-path active
+ok   unit isc-kea-dhcp4-server active
+ok   unit unbound active
+ok   unit bsnl-vpp-controller active
+ok   vpp host-vpp-access up
+ok   vpp host-vpp-wan up
+ok   vpp host-vpp-access.101 up
+ok   vpp 10.9.101.1/24 on host-vpp-access.101
+ok   vpp 198.51.100.1/24 on host-vpp-wan
+ok   vpp route 10.44.0.0/22 via 198.51.100.2
+ok   vpp dhcp proxy -> 198.51.100.2
+ok   vpp pre-auth ACL attached input on host-vpp-access.101
+ok   nft table ip bsnl_vpp_portal
+ok   kea config readable by _kea
+ok   kea config valid
+ok   unbound config valid
+ok   unbound answers the portal name
+ok   controller can use the unbound control socket
+ok   no orphan dhclient on lab VLANs
+HEALTHY
+## 1. pre-auth bypass suite (DHCP client)
+preauth ok=True checks=14 fails=[]
+{
+  "phase": "preauth",
+  "checks": {
+    "address_configured": {
+      "ok": true,
+      "interface": "10.9.101.29/24"
+    },
+    "dns_gateway_resolver": {
+      "ok": true
+    },
+    "dns_portal_name": {
+      "ok": true,
+      "status": "NOERROR",
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "dns_captive_check_name": {
+      "ok": true,
+      "status": "NOERROR",
+      "answers": [
+        "10.44.0.209"
+      ],
+      "expected": "10.44.0.209"
+    },
+    "dns_other_name": {
+      "ok": true,
+      "status": "REFUSED",
+      "answers": [],
+      "expected": "REFUSED"
+    },
+    "portal_https_reachable": {
+      "ok": true,
+      "result": "open"
+    },
+    "management_lan_blocked": {
+      "ok": true
+    },
+    "gateway_host_ssh_blocked": {
+      "ok": true,
+      "result": "timeout"
+    },
+    "foreign_resolver_blocked": {
+      "ok": true
+    },
+    "dot_853_to_target": {
+      "ok": true,
+      "result": "timeout"
+    },
+    "authorized_target_icmp": {
+      "ok": true,
+      "expected_reachable": false
+    },
+    "spoofed_source_blocked": {
+      "ok": true
+    },
+    "ipv6_no_default_route": {
+      "ok": true,
+      "routes": ""
+    },
+    "ipv6_gateway_silent": {
+      "ok": true,
+      "neighbours": ""
+    }
+  },
+  "ok": true
+}
+## 2. activate 10.9.101.50
+{"authorized": true, "changed": true, "contract_version": "v1", "dataplane_enforced": true, "gateway_revision": 10, "idempotency_key": "lab-w-1794830180601789888-a", "operation_id": "lab-w-1794830180601789888", "reason": "activated", "session_key": "lab-vpp-01/host-vpp-access/0x8100/200/101/10.9.101.50"} http=200 seconds=0.072316
+         11: ipv4 permit src 10.9.101.50/32 dst 192.0.2.0/24 proto 0 sport 0-65535 dport 0-65535
+## 3. authorized bypass suite, static 10.9.101.50
+authorized ok=False checks=14 fails=['dot_853_to_target']
+{
+  "phase": "authorized",
+  "checks": {
+    "address_configured": {
+      "ok": true,
+      "interface": "10.9.101.50/24"
+    },
+    "dns_gateway_resolver": {
+      "ok": true
+    },
+    "dns_portal_name": {
+      "ok": true,
+      "status": "NOERROR",
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "dns_captive_check_name": {
+      "ok": true,
+      "status": "NOERROR",
+      "answers": [
+        "17.253.18.196",
+        "17.253.18.207"
+      ],
+      "expected": "real address"
+    },
+    "dns_other_name": {
+      "ok": true,
+      "status": "NOERROR",
+      "answers": [
+        "172.66.147.243",
+        "104.20.23.154"
+      ],
+      "expected": "resolved"
+    },
+    "portal_https_reachable": {
+      "ok": true,
+      "result": "open"
+    },
+    "management_lan_blocked": {
+      "ok": true
+    },
+    "gateway_host_ssh_blocked": {
+      "ok": true,
+      "result": "timeout"
+    },
+    "foreign_resolver_blocked": {
+      "ok": true
+    },
+    "dot_853_to_target": {
+      "ok": false,
+      "result": "timeout"
+    },
+    "authorized_target_icmp": {
+      "ok": true,
+      "expected_reachable": true
+    },
+    "spoofed_source_blocked": {
+      "ok": true
+    },
+    "ipv6_no_default_route": {
+      "ok": true,
+      "routes": ""
+    },
+    "ipv6_gateway_silent": {
+      "ok": true,
+      "neighbours": ""
+    }
+  },
+  "ok": false
+}
+## 4. deactivate 10.9.101.50
+{"authorized": false, "changed": true, "contract_version": "v1", "dataplane_enforced": true, "gateway_revision": 11, "idempotency_key": "d-1794830197372786636", "operation_id": "d-1794830197374047706", "reason": "lab-writes-test", "session_key": "lab-vpp-01/host-vpp-access/0x8100/200/101/10.9.101.50"} http=200 seconds=0.067737
+permits for .50 left in VPP: 0
+## 5. same address after logout (pre-auth expectations)
+preauth ok=True checks=14 fails=[]
+## 6. VPP restart with 10.9.101.51 authorized: time until the controller ACL is restored
+{"authorized": true, "changed": true, "contract_version": "v1", "dataplane_enforced": true, "gateway_revision": 12, "idempotency_key": "lab-w-1794830217089664490-a", "operation_id": "lab-w-1794830217089664490", "reason": "activated", "session_key": "lab-vpp-01/host-vpp-access/0x8100/200/101/10.9.101.51"} http=200 seconds=0.069736
+HEALTHY
+fixture back after 2 s; bound input ACL now:   input acl(s): 0
+authorized ok=False checks=14 fails=['dot_853_to_target']
+{"authorized": false, "changed": true, "contract_version": "v1", "dataplane_enforced": true, "gateway_revision": 13, "idempotency_key": "d-1794830282121451193", "operation_id": "d-1794830282122606692", "reason": "lab-writes-test", "session_key": "lab-vpp-01/host-vpp-access/0x8100/200/101/10.9.101.51"} http=200 seconds=0.067459
+## controller log
+Nov 16 11:52:41 bsnl-vpp python3[160060]:   File "/usr/lib/python3/dist-packages/vpp_papi/vpp_papi.py", line 831, in _call_vpp
+Nov 16 11:52:41 bsnl-vpp python3[160060]:     self.transport.write(b)
+Nov 16 11:52:41 bsnl-vpp python3[160060]:   File "/usr/lib/python3/dist-packages/vpp_papi/vpp_transport_socket.py", line 209, in write
+Nov 16 11:52:41 bsnl-vpp python3[160060]:     raise VppTransportSocketIOError(1, "Sendall error: {err!r}".format(err=err))
+Nov 16 11:52:41 bsnl-vpp python3[160060]: vpp_papi.vpp_transport_socket.VppTransportSocketIOError: [Errno 1] Sendall error: BrokenPipeError(32, 'Broken pipe')
+Nov 16 11:52:41 bsnl-vpp python3[160060]: ----------------------------------------
+Nov 16 11:54:28 bsnl-vpp python3[165015]: INFO bsnl_vpp.dns_views: DNS views reloaded: 0 authenticated subscriber(s)
+Nov 16 11:54:33 bsnl-vpp python3[165015]: WARNING bsnl_vpp.vpp_adapter: VPP API ping failed, reconnecting: [Errno 1] Sendall error: BrokenPipeError(32, 'Broken pipe')
+Nov 16 11:55:29 bsnl-vpp python3[165478]: INFO bsnl_vpp.dns_views: DNS views reloaded: 0 authenticated subscriber(s)
+Nov 16 11:56:20 bsnl-vpp python3[165478]: INFO bsnl_vpp.dns_views: DNS views reloaded: 1 authenticated subscriber(s)
+Nov 16 11:56:37 bsnl-vpp python3[165478]: INFO bsnl_vpp.dns_views: DNS views reloaded: 0 authenticated subscriber(s)
+Nov 16 11:56:57 bsnl-vpp python3[165478]: INFO bsnl_vpp.dns_views: DNS views reloaded: 1 authenticated subscriber(s)
+Nov 16 11:56:59 bsnl-vpp python3[165478]: WARNING bsnl_vpp.vpp_adapter: VPP API ping failed, reconnecting: [Errno 1] Sendall error: BrokenPipeError(32, 'Broken pipe')
+Nov 16 11:56:59 bsnl-vpp python3[165478]: INFO bsnl_vpp.reconcile: reconcile: {'expired': 0, 'pruned': 0, 'applied': True, 'writes': ['sw_interface_tag_add_del', 'sw_interface_set_mtu', 'acl_add_replace', 'acl_interface_set_acl_list'], 'dns_reloaded': False}
+Nov 16 11:58:02 bsnl-vpp python3[165478]: INFO bsnl_vpp.dns_views: DNS views reloaded: 0 authenticated subscriber(s)
+
+# Re-run 2026-11-16T12:00:14Z after making dot_853_to_target informational in the authorized phase
+# (VPP trace: acl 1 rule 11 permit -> ip4-receive -> punt -> drop; session layer is not enabled, so no TCP RST)
+## authorized phase 10.9.101.50
+activate: "dataplane_enforced": true seconds=0.075371 
+{
+  "phase": "authorized",
+  "checks": {
+    "address_configured": {
+      "ok": true,
+      "interface": "10.9.101.50/24"
+    },
+    "dns_gateway_resolver": {
+      "ok": true
+    },
+    "dns_portal_name": {
+      "ok": true,
+      "status": "NOERROR",
+      "answers": [
+        "10.44.0.209"
+      ]
+    },
+    "dns_captive_check_name": {
+      "ok": true,
+      "status": "NOERROR",
+      "answers": [
+        "17.253.18.202",
+        "17.253.18.209"
+      ],
+      "expected": "real address"
+    },
+    "dns_other_name": {
+      "ok": true,
+      "status": "NOERROR",
+      "answers": [
+        "104.20.23.154",
+        "172.66.147.243"
+      ],
+      "expected": "resolved"
+    },
+    "portal_https_reachable": {
+      "ok": true,
+      "result": "open"
+    },
+    "management_lan_blocked": {
+      "ok": true
+    },
+    "gateway_host_ssh_blocked": {
+      "ok": true,
+      "result": "timeout"
+    },
+    "foreign_resolver_blocked": {
+      "ok": true
+    },
+    "dot_853_to_target": {
+      "ok": true,
+      "result": "timeout",
+      "informational": "VPP has no TCP stack; see authorized_target_icmp"
+    },
+    "authorized_target_icmp": {
+      "ok": true,
+      "expected_reachable": true
+    },
+    "spoofed_source_blocked": {
+      "ok": true
+    },
+    "ipv6_no_default_route": {
+      "ok": true,
+      "routes": ""
+    },
+    "ipv6_gateway_silent": {
+      "ok": true,
+      "neighbours": ""
+    }
+  },
+  "ok": true
+}
+deactivate: "dataplane_enforced": true seconds=0.073277 
+## VPP restart 1 with 10.9.101.53 authorized
+activate: "dataplane_enforced": true seconds=0.085280 
+connect: Connection refused
+controller ACL with the .53 permit bound 28.97 s after 'systemctl restart vpp' (reconcile interval 30 s)
+deactivate: "dataplane_enforced": true seconds=0.070015 
+## VPP restart 2 with 10.9.101.53 authorized
+activate: "dataplane_enforced": true seconds=0.078990 
+connect: Connection refused
+controller ACL with the .53 permit bound 29.99 s after 'systemctl restart vpp' (reconcile interval 30 s)
+deactivate: "dataplane_enforced": true seconds=0.069943 
+## lab check after
+HEALTHY

@@ -44,7 +44,7 @@ sudo sh deployment/bin/bsnl-vpp-unbound-install --rollback # back to dnsmasq
 |---|---|---|
 | Dry-run | (none) | validates and plans; no VPP access |
 | Observe | `--observe-vpp --port-map access0=host-vpp-access` | connects read-only, checks API CRCs, reports observed state |
-| Enforce | add `--enable-vpp-writes` | owns tenant sub-interfaces and the tenant ACL; refuses to start on CRC mismatch |
+| Enforce (lab default since 2026-11-16) | add `--enable-vpp-writes` | owns tenant sub-interfaces and the tenant ACL; refuses to start on CRC mismatch. Back out: remove the flag, reinstall the unit, restart the controller and then VPP (re-applies the static ACL) |
 
 Check the live CRCs before enabling writes:
 

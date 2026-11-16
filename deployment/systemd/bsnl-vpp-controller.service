@@ -16,9 +16,11 @@ WorkingDirectory=/opt/bsnl-vpp-gateway
 # Secrets (BSNL_VPP_PORTAL_HMAC_SECRET, BSNL_VPP_CONTROLLER_TOKEN) live only in
 # this root-owned 0640 file, never in the repository.
 EnvironmentFile=-/etc/bsnl-vpp-gateway/controller.env
-ExecStart=/usr/bin/python3 -m controller.main --desired-state /opt/bsnl-vpp-gateway/config/lab/desired-state.json --store /var/lib/bsnl-vpp-gateway/controller.sqlite3 --audit /var/lib/bsnl-vpp-gateway/audit.jsonl --serve --listen 10.44.0.207 --port 8787 --tls-cert /etc/bsnl-vpp-gateway/tls/server.crt --tls-key /etc/bsnl-vpp-gateway/tls/server.key --tls-ca /etc/bsnl-vpp-gateway/tls/ca.crt --observe-vpp --port-map access0=host-vpp-access --kea-lease-file /var/lib/kea/kea-leases4.csv --unbound-views-file /etc/unbound/bsnl/authenticated.conf
-# Interface writes stay off until explicitly qualified; to enable add
-# --enable-vpp-writes (the controller then refuses to start on an API CRC mismatch).
+ExecStart=/usr/bin/python3 -m controller.main --desired-state /opt/bsnl-vpp-gateway/config/lab/desired-state.json --store /var/lib/bsnl-vpp-gateway/controller.sqlite3 --audit /var/lib/bsnl-vpp-gateway/audit.jsonl --serve --listen 10.44.0.207 --port 8787 --tls-cert /etc/bsnl-vpp-gateway/tls/server.crt --tls-key /etc/bsnl-vpp-gateway/tls/server.key --tls-ca /etc/bsnl-vpp-gateway/tls/ca.crt --observe-vpp --enable-vpp-writes --port-map access0=host-vpp-access --kea-lease-file /var/lib/kea/kea-leases4.csv --unbound-views-file /etc/unbound/bsnl/authenticated.conf
+# --enable-vpp-writes (lab, 2026-11-16): the controller owns the tenant QinQ
+# sub-interface and the tagged tenant ACL (bsnl:acl/<tenant>), and refuses to
+# start on an API CRC mismatch. Remove the flag to fall back to the static ACL
+# from deployment/vpp/bsnl-lab.cli (re-applied by VPP on its next restart).
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
