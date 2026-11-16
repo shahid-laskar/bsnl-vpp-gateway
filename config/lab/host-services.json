@@ -11,11 +11,19 @@
     "www.msftconnecttest.com",
     "msftconnecttest.com",
     "www.msftncsi.com",
-    "msftncsi.com"
+    "msftncsi.com",
+    "detectportal.firefox.com",
+    "nmcheck.gnome.org",
+    "connectivity-check.ubuntu.com"
   ],
   "local_names": {
     "portal.lab": "198.51.100.2"
   },
   "lease_lifetime_seconds": 300,
-  "captive_api_url": "https://wifi.bsnl.co.in/portal/captive-api/"
+  "captive_api_url": "https://wifi.bsnl.co.in/portal/captive-api/",
+  "resolver": "unbound",
+  "captive_ttl_seconds": 5,
+  "preauth_dns_default": "refuse",
+  "preauth_resolve_domains": [],
+  "unbound_dynamic_dir": "/etc/unbound/bsnl"
 }

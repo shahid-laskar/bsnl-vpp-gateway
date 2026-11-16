@@ -6,11 +6,13 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import tempfile
 from collections.abc import Callable, Sequence
 from typing import Any
+from urllib.parse import urlsplit
 
 
 class HostServiceValidationError(ValueError):
@@ -163,6 +165,107 @@ def render_dnsmasq_config(plans: list[HostServicePlan], services: dict[str, Any]
         lines.append(f"address=/{host}/{address}")
     lines.append("log-queries")
     return "\n".join(lines) + "\n"
+
+
+DNS_NAME_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
+CAPTIVE_VIEW, AUTHENTICATED_VIEW = "captive", "authenticated"
+DEFAULT_UNBOUND_DYNAMIC_DIR = "/etc/unbound/bsnl"
+
+
+def dns_name(value: Any) -> str:
+    """Lower-case DNS name, validated so it can never break out of a quoted
+    Unbound directive."""
+    name = str(value).strip().rstrip(".").lower()
+    if not DNS_NAME_RE.fullmatch(name):
+        raise HostServiceValidationError(f"invalid DNS name {value!r}")
+    return name
+
+
+def portal_hostname(services: dict[str, Any]) -> str:
+    url = services.get("captive_api_url") or services.get("portal_url") or ""
+    host = urlsplit(url).hostname
+    if not host:
+        raise HostServiceValidationError("captive_api_url must contain the portal hostname")
+    return dns_name(host)
+
+
+def render_unbound_config(plans: list[HostServicePlan], services: dict[str, Any]) -> str:
+    """Split-horizon resolver (P5-T5, ADR-014).
+
+    * Tenant subnets map to view ``captive``: portal names and OS
+      captive-check names answer with the portal address (short TTL); every
+      other name is REFUSED (``preauth_dns_default: refuse``) so an
+      unauthenticated client cannot tunnel over recursive DNS; names in
+      ``preauth_resolve_domains`` resolve normally.
+    * Authenticated subscribers are added as /32 entries mapped to view
+      ``authenticated`` by the controller (``controller/dns_views.py``) in an
+      included file; longest prefix wins. That view has no overrides, so
+      captive-check names resolve to their real addresses and the OS sees
+      the portal as closed. Portal names still resolve to the portal for
+      every client (global local data).
+    """
+    if not plans:
+        raise HostServiceValidationError("at least one enabled tenant is required for the resolver")
+    addresses = {str(plan.dns_address) for plan in plans}
+    if len(addresses) != 1:
+        raise HostServiceValidationError(f"all tenants must share one resolver address in the lab design, got {sorted(addresses)}")
+    try:
+        portal = str(ipaddress.IPv4Address(services["portal_address"]))
+    except (KeyError, ValueError) as exc:
+        raise HostServiceValidationError("services.portal_address must be an IPv4 address") from exc
+    ttl = int(services.get("captive_ttl_seconds", 5))
+    if not 0 <= ttl <= 300:
+        raise HostServiceValidationError("captive_ttl_seconds must be between 0 and 300")
+    default = services.get("preauth_dns_default", "refuse")
+    if default not in {"refuse", "resolve"}:
+        raise HostServiceValidationError("preauth_dns_default must be 'refuse' or 'resolve'")
+    dynamic_dir = services.get("unbound_dynamic_dir", DEFAULT_UNBOUND_DYNAMIC_DIR)
+    if not str(dynamic_dir).startswith("/etc/unbound/"):
+        raise HostServiceValidationError("unbound_dynamic_dir must be under /etc/unbound (AppArmor profile)")
+
+    # Names every client resolves locally: the portal and explicit local names.
+    global_names = {portal_hostname(services): portal}
+    for name, address in (services.get("local_names") or {}).items():
+        global_names[dns_name(name)] = str(ipaddress.IPv4Address(address))
+    captive_names = {dns_name(host): portal for host in services.get("captive_hosts", [])}
+    captive_names = {name: addr for name, addr in captive_names.items() if name not in global_names}
+    resolve_domains = sorted({dns_name(d) for d in services.get("preauth_resolve_domains", [])})
+
+    def zone(name: str, address: str, indent: str = "  ") -> list[str]:
+        return [f'{indent}local-zone: "{name}." redirect', f'{indent}local-data: "{name}. {ttl} IN A {address}"']
+
+    resolver = addresses.pop()
+    lines = [
+        "# Rendered by controller.reconcile_host_services from config/lab/host-services.json.",
+        "# Do not edit; per-subscriber view entries live in " + f"{dynamic_dir}/ (controller).",
+        "server:",
+        f"  interface: {resolver}",
+        "  port: 53",
+        "  ip-freebind: yes",
+        "  do-ip6: no",
+        "  hide-identity: yes",
+        "  hide-version: yes",
+        "  qname-minimisation: yes",
+        "  access-control: 0.0.0.0/0 refuse",
+        "  access-control: ::/0 refuse",
+        "  # gateway-host diagnostics: no view, so answers match the authenticated view",
+        f"  access-control: {resolver}/32 allow",
+    ]
+    for plan in sorted(plans, key=lambda p: str(p.subnet)):
+        lines += [f"  access-control: {plan.subnet} allow", f"  access-control-view: {plan.subnet} {CAPTIVE_VIEW}"]
+    for name, address in sorted(global_names.items()):
+        lines += zone(name, address)
+    lines += [f'  include: "{dynamic_dir}/*.conf"', "",
+              "view:", f'  name: "{CAPTIVE_VIEW}"', "  view-first: yes"]
+    if default == "refuse":
+        lines.append('  local-zone: "." refuse')
+    # A view zone shadows the global ones, so portal names are repeated here.
+    for name, address in sorted({**captive_names, **global_names}.items()):
+        lines += zone(name, address)
+    for name in resolve_domains:
+        lines.append(f'  local-zone: "{name}." transparent')
+    lines += ["", "view:", f'  name: "{AUTHENTICATED_VIEW}"', "  view-first: yes", ""]
+    return "\n".join(lines)
 
 
 DEFAULT_BACKUP_DIR = Path("/var/lib/bsnl-vpp-gateway/backups")

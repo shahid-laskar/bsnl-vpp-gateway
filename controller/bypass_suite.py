@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 
 from .dhcp_qualification import cleanup, setup_namespace, try_run
@@ -36,6 +37,23 @@ def dns(nsx, server, name="wifi.bsnl.co.in"):
     return try_run(*nsx, "dig", "+short", "+time=2", "+tries=1", f"@{server}", name, timeout=10).returncode == 0
 
 
+def lookup(nsx, server, name):
+    """(rcode, [A records]) from the subscriber's point of view."""
+    out = try_run(*nsx, "dig", "+time=2", "+tries=1", "+noall", "+comments", "+answer", f"@{server}", name, "A", timeout=10).stdout
+    return parse_dig(out)
+
+
+def parse_dig(out):
+    """Header status (TIMEOUT if none) and A records of ``dig +comments +answer``."""
+    match = re.search(r"status: ([A-Z]+)", out)
+    answers = []
+    for line in out.splitlines():
+        fields = line.split()  # NAME TTL CLASS TYPE RDATA
+        if len(fields) == 5 and not line.startswith(";") and fields[3] == "A":
+            answers.append(fields[4])
+    return (match.group(1) if match else "TIMEOUT"), answers
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--phase", choices=("preauth", "authorized"), default="preauth")
@@ -44,6 +62,9 @@ def main() -> int:
     parser.add_argument("--prefix-len", type=int, default=24)
     parser.add_argument("--portal", default="10.44.0.209")
     parser.add_argument("--resolver", default="198.51.100.2")
+    parser.add_argument("--portal-name", default="wifi.bsnl.co.in")
+    parser.add_argument("--captive-check-name", default="captive.apple.com")
+    parser.add_argument("--other-name", default="example.com")
     parser.add_argument("--authorized-target", default="192.0.2.1", help="lab authenticated_destinations target")
     parser.add_argument("--management-probe", default="10.44.1.234")
     parser.add_argument("--namespace", default="bsnl-bypass")
@@ -72,6 +93,19 @@ def main() -> int:
 
         # Allowed in every phase (pre-auth essentials)
         expect("dns_gateway_resolver", dns(nsx, args.resolver))
+        authorized = args.phase == "authorized"
+
+        # Split DNS (P5-T5, ADR-014). The portal name always points at the
+        # portal; captive-check names only before authentication; other names
+        # are refused before authentication (no DNS tunnelling).
+        status, answers = lookup(nsx, args.resolver, args.portal_name)
+        expect("dns_portal_name", answers == [args.portal], status=status, answers=answers)
+        status, answers = lookup(nsx, args.resolver, args.captive_check_name)
+        expect("dns_captive_check_name", (args.portal not in answers and status == "NOERROR" and bool(answers)) if authorized else answers == [args.portal],
+               status=status, answers=answers, expected="real address" if authorized else args.portal)
+        status, answers = lookup(nsx, args.resolver, args.other_name)
+        expect("dns_other_name", (status == "NOERROR" and bool(answers)) if authorized else status == "REFUSED",
+               status=status, answers=answers, expected="resolved" if authorized else "REFUSED")
         expect("portal_https_reachable", tcp(nsx, args.portal, 443) in {"open", "refused"}, result=tcp(nsx, args.portal, 443))
 
         # Blocked in every phase (protected or never-allowed)
@@ -80,7 +114,6 @@ def main() -> int:
         expect("gateway_host_ssh_blocked", result == "timeout", result=result)
         expect("foreign_resolver_blocked", not dns(nsx, args.authorized_target))
         result = tcp(nsx, args.authorized_target, 853)
-        authorized = args.phase == "authorized"
         # In the authorized phase the lab target is permitted, so TCP is refused
         # by VPP (no listener) rather than timing out.
         expect("dot_853_to_target", result == ("refused" if authorized else "timeout"), result=result)

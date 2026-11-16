@@ -54,13 +54,14 @@ systemctl daemon-reload
 
 say "validate service configs before restart"
 kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
-dnsmasq --test
+# Resolver: Unbound once bsnl-vpp-unbound-install has run (ADR-014), else dnsmasq.
+if systemctl is-enabled --quiet unbound 2>/dev/null; then resolver=unbound; unbound-checkconf /etc/unbound/unbound.conf; else resolver=dnsmasq; dnsmasq --test; fi
 
 say "restart services"
-systemctl reset-failed isc-kea-dhcp4-server dnsmasq bsnl-vpp-afpacket 2>/dev/null || true
+systemctl reset-failed isc-kea-dhcp4-server "$resolver" bsnl-vpp-afpacket 2>/dev/null || true
 systemctl start bsnl-vpp-lab-links
 systemctl restart vpp
-systemctl restart isc-kea-dhcp4-server dnsmasq bsnl-vpp-portal-path bsnl-vpp-controller
+systemctl restart isc-kea-dhcp4-server "$resolver" bsnl-vpp-portal-path bsnl-vpp-controller
 
 say "verify"
 /usr/local/sbin/bsnl-vpp-lab-check --wait 30

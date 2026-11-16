@@ -156,7 +156,11 @@ class SubscriberApiHandler(BaseHTTPRequestHandler):
         # (deactivate) this subscriber, confirmed by applying desired state
         # immediately. Interface writes alone never make a session usable.
         enforcer = getattr(self.server.adapter, "enforce_subscriber", None)
-        enforced = bool(enforcer and enforcer(lifecycle.store.read() or {}, result.session_key, result.authorized))
+        state = lifecycle.store.read() or {}
+        enforced = bool(enforcer and enforcer(state, result.session_key, result.authorized))
+        dns_views = getattr(self.server, "dns_views", None)
+        if dns_views is not None and result.changed:
+            dns_views.sync(state)  # best effort; the reconciler retries
         self._json(HTTPStatus.OK, {**result.__dict__, "contract_version": CONTRACT_VERSION, "dataplane_enforced": enforced})
 
     def log_message(self, *_args: Any) -> None:
@@ -166,15 +170,16 @@ class SubscriberApiHandler(BaseHTTPRequestHandler):
 class SubscriberApiServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], store_path: str, audit_path: str | None = None, *, adapter: Any = None, lifecycle: SubscriberLifecycle | None = None) -> None:
+    def __init__(self, address: tuple[str, int], store_path: str, audit_path: str | None = None, *, adapter: Any = None, lifecycle: SubscriberLifecycle | None = None, dns_views: Any = None) -> None:
         super().__init__(address, SubscriberApiHandler)
+        self.dns_views = dns_views
         self.lifecycle = lifecycle or SubscriberLifecycle(DesiredStateStore(store_path, audit_path))
         self.adapter = adapter or LabAdapter()
         self.replay_cache = ReplayCache()
 
 
-def serve(listen: str = "127.0.0.1", port: int = 8787, store_path: str = "var/controller.sqlite3", audit_path: str | None = "var/audit.jsonl", tls_cert: str | None = None, tls_key: str | None = None, tls_ca: str | None = None, *, adapter: Any = None, lifecycle: SubscriberLifecycle | None = None) -> None:
-    server = SubscriberApiServer((listen, port), store_path, audit_path, adapter=adapter, lifecycle=lifecycle)
+def serve(listen: str = "127.0.0.1", port: int = 8787, store_path: str = "var/controller.sqlite3", audit_path: str | None = "var/audit.jsonl", tls_cert: str | None = None, tls_key: str | None = None, tls_ca: str | None = None, *, adapter: Any = None, lifecycle: SubscriberLifecycle | None = None, dns_views: Any = None) -> None:
+    server = SubscriberApiServer((listen, port), store_path, audit_path, adapter=adapter, lifecycle=lifecycle, dns_views=dns_views)
     if any((tls_cert, tls_key, tls_ca)):
         if not all((tls_cert, tls_key, tls_ca)):
             raise ValueError("tls_cert, tls_key, and tls_ca must be provided together")

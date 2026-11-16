@@ -53,8 +53,9 @@ class Reconciler:
     VPP restart when writes are enabled). Errors are logged; the loop never dies.
     """
 
-    def __init__(self, store: DesiredStateStore, lifecycle: SubscriberLifecycle, adapter: DataplaneAdapter, interval_seconds: float = 30.0) -> None:
+    def __init__(self, store: DesiredStateStore, lifecycle: SubscriberLifecycle, adapter: DataplaneAdapter, interval_seconds: float = 30.0, dns_views: Any = None) -> None:
         self.store, self.lifecycle, self.adapter = store, lifecycle, adapter
+        self.dns_views = dns_views
         self.interval = interval_seconds
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -71,6 +72,8 @@ class Reconciler:
                 self.adapter.apply(state)
                 summary["applied"] = True
                 summary["writes"] = list(getattr(self.adapter, "last_apply_writes", []) or [])
+                if self.dns_views is not None:
+                    summary["dns_reloaded"] = self.dns_views.sync(state)
             self.last_error = None
         except Exception as exc:  # keep reconciling on the next tick
             self.last_error = f"{type(exc).__name__}: {exc}"

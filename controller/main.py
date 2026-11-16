@@ -56,6 +56,7 @@ def main() -> int:
     parser.add_argument("--reconcile-interval", type=float, default=30.0)
     parser.add_argument("--kea-lease-file", default=None, help="Kea memfile lease CSV; enables lease -> SubscriberBinding sync (P5-T4)")
     parser.add_argument("--lease-poll-interval", type=float, default=1.0)
+    parser.add_argument("--unbound-views-file", default=None, help="generated Unbound include for authenticated subscribers; enables split DNS (P5-T5)")
     args = parser.parse_args()
     if args.api_crc_snapshot is None:
         from .vpp_adapter import DEFAULT_SNAPSHOT
@@ -74,14 +75,19 @@ def main() -> int:
         "desired_object_keys": result.desired_object_keys,
         "expired_subscribers": [item.__dict__ for item in expired],
     }, indent=2, default=str))
+    dns_views = None
+    if args.unbound_views_file:
+        from .dns_views import UnboundViewSync
+        dns_views = UnboundViewSync(args.unbound_views_file)
+        dns_views.sync(store.read() or {})
     if args.serve:
-        reconciler = Reconciler(store, lifecycle, adapter, args.reconcile_interval)
+        reconciler = Reconciler(store, lifecycle, adapter, args.reconcile_interval, dns_views=dns_views)
         reconciler.start()
         if args.kea_lease_file:
             from .bindings import LeaseWatcher
             from .leases import KeaMemfileLeaseSource
             LeaseWatcher(store, KeaMemfileLeaseSource(args.kea_lease_file), args.lease_poll_interval).start()
-        serve(args.listen, args.port, args.store, args.audit, args.tls_cert, args.tls_key, args.tls_ca, adapter=adapter, lifecycle=lifecycle)
+        serve(args.listen, args.port, args.store, args.audit, args.tls_cert, args.tls_key, args.tls_ca, adapter=adapter, lifecycle=lifecycle, dns_views=dns_views)
     return 0
 
 
