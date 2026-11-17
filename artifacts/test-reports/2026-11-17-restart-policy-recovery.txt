@@ -1,0 +1,88 @@
+# Restart recovery of an authenticated subscriber (lab, 2026-11-17)
+# sudo python3 -m tests.lab.restart_policy_recovery --runs N
+# Subscriber 10.9.101.50 activated via the controller API (mTLS), pinging the
+# authorized-only target 192.0.2.1 every 0.2 s from a QinQ namespace while VPP restarts.
+# static_acl_bound_s = bsnl-lab.cli finished; authorized_again_s = ping works again.
+
+## 1. Before (main 7240919: re-apply on the next 30 s reconcile tick), 05:0x UTC
+{"run": 1, "systemctl_restart_s": 0.12, "static_acl_bound_s": 2.53, "authorized_again_s": 31.72, "controller_lag_s": 29.19}
+{"run": 2, "systemctl_restart_s": 0.12, "static_acl_bound_s": 2.53, "authorized_again_s": 30.26, "controller_lag_s": 27.73}
+ok: true (preauth blocked, activation/deactivation enforced)
+
+## 2. Controller watch loop only (fb06e1e), random VPP MACs, from 2026-11-17T05:10:27Z
+# Controller log: 'VPP startup config finished 2.0 s after connect' and
+# 're-applied 2.0 s after reconnect' every run, yet the ping took 31-50 s:
+# VPP picks a new random 02:fe MAC per restart and the namespace kept the old
+# gateway MAC in its ARP cache (host-vpp-wan likewise on br-wan).
+{"run": 1, "systemctl_restart_s": 0.17, "static_acl_bound_s": 2.59, "authorized_again_s": 33.93, "controller_lag_s": 31.35}
+{"run": 2, "systemctl_restart_s": 0.11, "static_acl_bound_s": 2.53, "authorized_again_s": 48.33, "controller_lag_s": 45.8}
+{"run": 3, "systemctl_restart_s": 0.11, "static_acl_bound_s": 2.53, "authorized_again_s": 50.75, "controller_lag_s": 48.22}
+{"run": 4, "systemctl_restart_s": 0.11, "static_acl_bound_s": 2.53, "authorized_again_s": 49.54, "controller_lag_s": 47.01}
+{"run": 5, "systemctl_restart_s": 0.11, "static_acl_bound_s": 2.53, "authorized_again_s": 50.74, "controller_lag_s": 48.21}
+
+## 3. Watch loop + MACs pinned in bsnl-lab.cli (hw-addr), from 2026-11-17T05:16:30Z
+# (run 2: the static ACL fell between two 1 s ping samples)
+{"run": 1, "systemctl_restart_s": 0.12, "static_acl_bound_s": 2.53, "authorized_again_s": 4.95, "controller_lag_s": 2.42}
+{"run": 2, "systemctl_restart_s": 0.11, "static_acl_bound_s": null, "authorized_again_s": 3.75}
+{"run": 3, "systemctl_restart_s": 0.11, "static_acl_bound_s": 2.53, "authorized_again_s": 4.95, "controller_lag_s": 2.42}
+{"run": 4, "systemctl_restart_s": 0.11, "static_acl_bound_s": 2.53, "authorized_again_s": 4.95, "controller_lag_s": 2.42}
+{"run": 5, "systemctl_restart_s": 0.11, "static_acl_bound_s": 2.53, "authorized_again_s": 4.95, "controller_lag_s": 2.42}
+{
+  "ip": "10.9.101.50",
+  "target": "192.0.2.1",
+  "runs": [
+    {
+      "run": 1,
+      "systemctl_restart_s": 0.12,
+      "static_acl_bound_s": 2.53,
+      "authorized_again_s": 4.95,
+      "controller_lag_s": 2.42
+    },
+    {
+      "run": 2,
+      "systemctl_restart_s": 0.11,
+      "static_acl_bound_s": null,
+      "authorized_again_s": 3.75
+    },
+    {
+      "run": 3,
+      "systemctl_restart_s": 0.11,
+      "static_acl_bound_s": 2.53,
+      "authorized_again_s": 4.95,
+      "controller_lag_s": 2.42
+    },
+    {
+      "run": 4,
+      "systemctl_restart_s": 0.11,
+      "static_acl_bound_s": 2.53,
+      "authorized_again_s": 4.95,
+      "controller_lag_s": 2.42
+    },
+    {
+      "run": 5,
+      "systemctl_restart_s": 0.11,
+      "static_acl_bound_s": 2.53,
+      "authorized_again_s": 4.95,
+      "controller_lag_s": 2.42
+    }
+  ],
+  "preauth_blocked": true,
+  "activation_enforced": true,
+  "authorized_before": true,
+  "deactivation_enforced": true,
+  "blocked_after_deactivation": true,
+  "ok": true
+}
+
+## 4. Regression: sh tests/lab/test_restart_recovery.sh 2
+=== run 1/2: restarting vpp
+fixture healthy after 3 s
+=== run 2/2: restarting vpp
+fixture healthy after 2 s
+PASS: 2 restart cycles
+
+## 5. Regression: python3 -m controller.bypass_suite (pre-auth): ok true
+{'address_configured': True, 'dns_gateway_resolver': True, 'dns_portal_name': True, 'dns_captive_check_name': True, 'dns_other_name': True, 'portal_https_reachable': True, 'management_lan_blocked': True, 'gateway_host_ssh_blocked': True, 'foreign_resolver_blocked': True, 'dot_853_to_target': True, 'authorized_target_icmp': True, 'spoofed_source_blocked': True, 'ipv6_no_default_route': True, 'ipv6_gateway_silent': True}
+
+## 6. Unit tests
+121 passed in 18.94s

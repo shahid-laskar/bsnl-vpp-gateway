@@ -5,8 +5,11 @@ comment { Requires the Linux veths from bsnl-vpp-lab-links.service to exist firs
 comment { Interim (plan Step 1): these objects move to the controller in Step 4. }
 
 comment { af_packet attachments (was bsnl-vpp-afpacket) }
-create host-interface name vpp-access
-create host-interface name vpp-wan
+comment { Fixed MACs: without hw-addr VPP picks a random 02:fe MAC on every start, }
+comment { so after a restart subscribers and the Linux host on br-wan kept the old }
+comment { gateway MAC in their ARP caches and lost traffic for 30-50 s (2026-11-17). }
+create host-interface name vpp-access hw-addr 02:fe:b5:00:00:01
+create host-interface name vpp-wan hw-addr 02:fe:b5:00:00:02
 set interface state host-vpp-access up
 set interface state host-vpp-wan up
 

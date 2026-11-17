@@ -34,6 +34,7 @@ cd /opt/bsnl-vpp-gateway
 sudo sh deployment/bin/bsnl-vpp-lab-install     # backs up, cleans test leftovers, installs, restarts, checks
 sudo bsnl-vpp-lab-check                         # read-only health check (--wait 30 to poll)
 sudo sh tests/lab/test_restart_recovery.sh 5    # restart VPP 5x; fixture + subscriber checks each time
+sudo python3 -m tests.lab.restart_policy_recovery --runs 5   # authenticated subscriber outage per VPP restart (writes on)
 sudo sh deployment/bin/bsnl-vpp-unbound-install            # dnsmasq -> Unbound split DNS (done 2026-11-16)
 sudo sh deployment/bin/bsnl-vpp-unbound-install --rollback # back to dnsmasq
 ```

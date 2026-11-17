@@ -27,8 +27,13 @@ immediately; return traffic is not filtered.
 
 Without `--enable-vpp-writes`, the static ACL in `deployment/vpp/bsnl-lab.cli`
 stays in force (fail closed). After a VPP restart the static ACL applies until
-the next reconcile tick (≤ 30 s), so authenticated subscribers lose access for
-up to that long.
+the controller re-applies the tenant ACL: its 1 s watch loop notices the new
+VPP, waits until `bsnl-lab.cli` has finished (the sub-interface has an input
+ACL bound) so it never races VPP's startup config, then re-applies. Measured
+2026-11-17: authenticated subscribers lose access for 3.8–5.0 s per VPP
+restart (was 30–32 s). The VPP af_packet MACs are pinned in `bsnl-lab.cli`;
+random MACs per restart had left stale gateway ARP entries on subscribers and
+on the host for another 30–50 s.
 
 ## Consequences
 

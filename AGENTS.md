@@ -123,9 +123,10 @@ dnsmasq --test
   against `artifacts/api-crc-26.10.json` (regenerate with
   `tools/api_crc_snapshot.py` on every VPP upgrade). Writes are off by default
   in code; the lab unit runs with `--enable-vpp-writes` since 2026-11-16
-  (controller owns the tenant sub-interface and ACL). After a VPP restart the
-  static ACL from `bsnl-lab.cli` applies until the next reconcile tick (up to
-  30 s, measured): authenticated subscribers lose access meanwhile.
+  (controller owns the tenant sub-interface and ACL). After a VPP restart a
+  1 s watch loop (`--vpp-watch-interval`) re-applies once `bsnl-lab.cli` has
+  finished (`--vpp-startup-settle-seconds`, 10 s max): authenticated
+  subscribers are back in 3.8–5.0 s (lab, 2026-11-17).
   `subscriber_policy_enforced` stays false until step 5, so the portal keeps
   sessions out of `fully_active`.
 - Decision (lab, until D-06): tenants use VRF 0 (shared FIB). The live
@@ -146,7 +147,11 @@ dnsmasq --test
   activation/deactivation is applied before the API responds and
   `dataplane_enforced` is true only when VPP confirms it. Without writes the
   static ACL from `deployment/vpp/bsnl-lab.cli` stays in force (fail closed);
-  after a VPP restart that static ACL applies until the next reconcile tick.
+  after a VPP restart that static ACL applies until the watch loop re-applies
+  (seconds; `sudo python3 -m tests.lab.restart_policy_recovery`).
+- VPP af_packet MACs are pinned in `bsnl-lab.cli` (`hw-addr 02:fe:b5:00:00:01`
+  access, `:02` WAN). Do not remove: random MACs per restart left stale ARP
+  entries on subscribers and the host for 30–50 s.
 - Lab `authenticated_destinations` is `192.0.2.0/24` (VPP's own fixture
   address): authorization is observable (ping 192.0.2.1) but opens no internet
   path. NAT/upstream is step 7; do not widen it before then.
