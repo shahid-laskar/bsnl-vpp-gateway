@@ -274,10 +274,11 @@ sudo unbound-checkconf
    route; the lab reuses the CN `bsnl-vpp-portal-client` certificate issued
    2026-11-11 by the lab CA (expires 2027-11-11).
 2. **Phase 6 remainder:** HTTP redirect (ADR-015) and MAC/IP enforcement
-   (ADR-016) DONE 2026-11-17. Left: ARP protection (static neighbours from
-   bindings), portal MACSecurityPolicy -> tenant mode sync, D-09 ACL vs SVS
-   measurement at 1k/10k subscribers (now two ACL replaces per login),
-   Unbound reload batching at churn (ADR-014 limits), captive detection on
+   (ADR-016) DONE 2026-11-17. D-09 MEASURED 2026-11-17: the deployed ACL
+   candidate fails churn beyond ~1k subscribers; SVS recommended (ADR-010
+   proposal, awaiting approval; bench: `tools/d09/`). Left: ARP protection
+   (static neighbours from bindings), portal MACSecurityPolicy -> tenant mode
+   sync, SVS migration if approved, Unbound reload batching at churn (ADR-014 limits), captive detection on
    real Android/iOS/Windows clients.
 3. **Phase 5 leftovers:** VPP neighbour table as secondary MAC source; D-19
    resolver scale measurement.

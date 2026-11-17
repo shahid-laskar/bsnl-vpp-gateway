@@ -1,0 +1,361 @@
+{
+  "vpp": "26.10-release",
+  "socket": "/run/vpp-bench/api.sock",
+  "B": [
+    {
+      "subscribers": 100,
+      "initial_load_ms": 15.1,
+      "tenant_acl_rules": 114,
+      "activation": {
+        "n": 20,
+        "p50_ms": 23.49,
+        "p95_ms": 25.28,
+        "max_ms": 26.39,
+        "mean_ms": 23.72
+      },
+      "deactivation": {
+        "n": 20,
+        "p50_ms": 23.95,
+        "p95_ms": 26.29,
+        "max_ms": 64.27,
+        "mean_ms": 25.91
+      },
+      "converged_noop_apply": {
+        "n": 5,
+        "p50_ms": 17.18,
+        "p95_ms": 18.56,
+        "max_ms": 18.56,
+        "mean_ms": 17.27
+      }
+    },
+    {
+      "subscribers": 1000,
+      "initial_load_ms": 94.3,
+      "tenant_acl_rules": 1014,
+      "activation": {
+        "n": 20,
+        "p50_ms": 181.01,
+        "p95_ms": 234.11,
+        "max_ms": 278.34,
+        "mean_ms": 190.06
+      },
+      "deactivation": {
+        "n": 20,
+        "p50_ms": 204.0,
+        "p95_ms": 238.68,
+        "max_ms": 248.12,
+        "mean_ms": 199.86
+      },
+      "converged_noop_apply": {
+        "n": 5,
+        "p50_ms": 132.56,
+        "p95_ms": 168.01,
+        "max_ms": 168.01,
+        "mean_ms": 138.9
+      }
+    },
+    {
+      "subscribers": 10000,
+      "initial_load_ms": 1076.3,
+      "tenant_acl_rules": 10014,
+      "activation": {
+        "n": 20,
+        "p50_ms": 3166.86,
+        "p95_ms": 3456.82,
+        "max_ms": 3509.23,
+        "mean_ms": 3208.08
+      },
+      "deactivation": {
+        "n": 20,
+        "p50_ms": 3112.0,
+        "p95_ms": 3332.6,
+        "max_ms": 3455.46,
+        "mean_ms": 3135.28
+      },
+      "converged_noop_apply": {
+        "n": 5,
+        "p50_ms": 2670.66,
+        "p95_ms": 2701.11,
+        "max_ms": 2701.11,
+        "mean_ms": 2649.16
+      }
+    }
+  ],
+  "B_raw_acl": [
+    {
+      "rules": 101,
+      "acl_add_replace": {
+        "n": 9,
+        "p50_ms": 2.76,
+        "p95_ms": 2.89,
+        "max_ms": 2.89,
+        "mean_ms": 2.78
+      },
+      "acl_dump_ms": 3.5
+    },
+    {
+      "rules": 1001,
+      "acl_add_replace": {
+        "n": 9,
+        "p50_ms": 24.48,
+        "p95_ms": 25.42,
+        "max_ms": 25.42,
+        "mean_ms": 24.59
+      },
+      "acl_dump_ms": 32.7
+    },
+    {
+      "rules": 10001,
+      "acl_add_replace": {
+        "n": 9,
+        "p50_ms": 250.42,
+        "p95_ms": 268.62,
+        "max_ms": 268.62,
+        "mean_ms": 248.87
+      },
+      "acl_dump_ms": 923.5
+    }
+  ],
+  "A": [
+    {
+      "subscribers": 100,
+      "initial_load_ms": 46.1,
+      "activation": {
+        "n": 20,
+        "p50_ms": 0.42,
+        "p95_ms": 0.46,
+        "max_ms": 0.54,
+        "mean_ms": 0.43
+      },
+      "deactivation": {
+        "n": 20,
+        "p50_ms": 0.42,
+        "p95_ms": 0.47,
+        "max_ms": 1.1,
+        "mean_ms": 0.46
+      }
+    },
+    {
+      "subscribers": 1000,
+      "initial_load_ms": 482.1,
+      "activation": {
+        "n": 20,
+        "p50_ms": 0.44,
+        "p95_ms": 0.58,
+        "max_ms": 0.64,
+        "mean_ms": 0.45
+      },
+      "deactivation": {
+        "n": 20,
+        "p50_ms": 0.43,
+        "p95_ms": 0.53,
+        "max_ms": 0.69,
+        "mean_ms": 0.45
+      }
+    },
+    {
+      "subscribers": 10000,
+      "initial_load_ms": 4880.7,
+      "activation": {
+        "n": 20,
+        "p50_ms": 0.48,
+        "p95_ms": 0.77,
+        "max_ms": 0.96,
+        "mean_ms": 0.53
+      },
+      "deactivation": {
+        "n": 20,
+        "p50_ms": 0.44,
+        "p95_ms": 0.72,
+        "max_ms": 0.81,
+        "mean_ms": 0.49
+      }
+    }
+  ],
+  "churn": [
+    {
+      "candidate": "B",
+      "subscribers": 1000,
+      "target_rate": 10.0,
+      "achieved_rate": 4.3,
+      "ops": 256,
+      "op_latency": {
+        "n": 256,
+        "p50_ms": 224.39,
+        "p95_ms": 307.89,
+        "max_ms": 399.32,
+        "mean_ms": 233.46
+      },
+      "probe_ping": {
+        "sent": 11984,
+        "received": 11984,
+        "lost": 0,
+        "loss_pct": 0.0
+      }
+    },
+    {
+      "candidate": "A",
+      "subscribers": 1000,
+      "target_rate": 10.0,
+      "achieved_rate": 10.0,
+      "ops": 596,
+      "op_latency": {
+        "n": 596,
+        "p50_ms": 0.8,
+        "p95_ms": 1.61,
+        "max_ms": 4.11,
+        "mean_ms": 0.91
+      },
+      "probe_ping": {
+        "sent": 11999,
+        "received": 11999,
+        "lost": 0,
+        "loss_pct": 0.0
+      }
+    },
+    {
+      "candidate": "B",
+      "subscribers": 1000,
+      "target_rate": 50.0,
+      "achieved_rate": 4.2,
+      "ops": 249,
+      "op_latency": {
+        "n": 249,
+        "p50_ms": 228.69,
+        "p95_ms": 329.68,
+        "max_ms": 436.02,
+        "mean_ms": 239.14
+      },
+      "probe_ping": {
+        "sent": 11988,
+        "received": 11988,
+        "lost": 0,
+        "loss_pct": 0.0
+      }
+    },
+    {
+      "candidate": "A",
+      "subscribers": 1000,
+      "target_rate": 50.0,
+      "achieved_rate": 50.0,
+      "ops": 2976,
+      "op_latency": {
+        "n": 2976,
+        "p50_ms": 0.79,
+        "p95_ms": 1.35,
+        "max_ms": 6.55,
+        "mean_ms": 0.9
+      },
+      "probe_ping": {
+        "sent": 11999,
+        "received": 11998,
+        "lost": 1,
+        "loss_pct": 0.008
+      }
+    },
+    {
+      "candidate": "B",
+      "subscribers": 10000,
+      "target_rate": 10.0,
+      "achieved_rate": 0.3,
+      "ops": 18,
+      "op_latency": {
+        "n": 18,
+        "p50_ms": 3417.85,
+        "p95_ms": 3793.11,
+        "max_ms": 3804.82,
+        "mean_ms": 3445.62
+      },
+      "probe_ping": {
+        "sent": 11979,
+        "received": 11979,
+        "lost": 0,
+        "loss_pct": 0.0
+      }
+    },
+    {
+      "candidate": "A",
+      "subscribers": 10000,
+      "target_rate": 10.0,
+      "achieved_rate": 10.0,
+      "ops": 596,
+      "op_latency": {
+        "n": 596,
+        "p50_ms": 0.77,
+        "p95_ms": 1.27,
+        "max_ms": 3.08,
+        "mean_ms": 0.87
+      },
+      "probe_ping": {
+        "sent": 12001,
+        "received": 12000,
+        "lost": 1,
+        "loss_pct": 0.008
+      }
+    },
+    {
+      "candidate": "B",
+      "subscribers": 10000,
+      "target_rate": 50.0,
+      "achieved_rate": 0.3,
+      "ops": 17,
+      "op_latency": {
+        "n": 17,
+        "p50_ms": 3490.65,
+        "p95_ms": 3831.31,
+        "max_ms": 3850.39,
+        "mean_ms": 3538.74
+      },
+      "probe_ping": {
+        "sent": 11980,
+        "received": 11980,
+        "lost": 0,
+        "loss_pct": 0.0
+      }
+    },
+    {
+      "candidate": "A",
+      "subscribers": 10000,
+      "target_rate": 50.0,
+      "achieved_rate": 50.0,
+      "ops": 2976,
+      "op_latency": {
+        "n": 2976,
+        "p50_ms": 0.81,
+        "p95_ms": 1.46,
+        "max_ms": 12.55,
+        "mean_ms": 0.9
+      },
+      "probe_ping": {
+        "sent": 12001,
+        "received": 12001,
+        "lost": 0,
+        "loss_pct": 0.0
+      }
+    }
+  ],
+  "baseline_ping": {
+    "sent": 3999,
+    "received": 3999,
+    "lost": 0,
+    "loss_pct": 0.0
+  },
+  "svs_functional_r11": {
+    "setup": "subscriber sub-if in captive VRF 10 (no route to 192.0.2.0/24), loop0 192.0.2.1/24 in internet VRF 20, return route 10.9.0.0/16 table 20 via sub-if, SVS table 100 on the sub-if, no input ACL",
+    "no_svs_route": {
+      "10.9.101.7": "blocked",
+      "10.9.101.8": "blocked"
+    },
+    "svs_7_to_vrf20": {
+      "10.9.101.7": "reach",
+      "10.9.101.8": "blocked (falls through to captive VRF)"
+    },
+    "svs_7_and_8": {
+      "10.9.101.8": "reach"
+    },
+    "svs_8_removed": {
+      "10.9.101.8": "blocked",
+      "10.9.101.7": "reach"
+    }
+  }
+}

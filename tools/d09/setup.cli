@@ -1,0 +1,9 @@
+comment { D-09 bench fixture: QinQ 200/101 tenant (/16 so it holds 10k subscribers) on a veth }
+create host-interface name bvpp0 hw-addr 02:fe:b5:00:09:01
+set interface state host-bvpp0 up
+create sub-interfaces host-bvpp0 101 dot1q 200 inner-dot1q 101 exact-match
+set interface ip address host-bvpp0.101 10.9.0.1/16
+set interface state host-bvpp0.101 up
+create loopback interface
+set interface ip address loop0 192.0.2.1/24
+set interface state loop0 up
