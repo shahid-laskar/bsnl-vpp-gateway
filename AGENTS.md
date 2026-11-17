@@ -169,8 +169,8 @@ sudo unbound-checkconf
 - Lab exception (S-2): subscriber->portal traffic is SNATed out of the
   management NIC `ens18` by `bsnl-vpp-portal-path`. Acceptable only in this VM
   lab; production must reach the portal via the WAN/service network.
-- Not in this step: MACIP enforcement (`mac_enforcement` stays `log_only`),
-  SVS (candidate A) comparison for D-09. HTTP redirect: see below.
+- Not in this step: SVS (candidate A) comparison for D-09. HTTP redirect and
+  MAC enforcement: see below.
 
 ## HTTP redirect (Phase 6, ADR-015, 2026-11-17)
 
@@ -188,6 +188,21 @@ sudo unbound-checkconf
   controller at boot once; it fails closed).
 - Controller POSTs need HMAC since 2026-11-17: use
   `tests/lab/controller_client.py` (activate/deactivate CLI) for lab tests.
+
+## MAC/IP enforcement (Phase 6, ADR-016, 2026-11-17)
+
+- Lab tenant `mac_enforcement: "enforce"`: a controller-owned classifier
+  chain is the ip4 input ACL of host-vpp-access.101 (`sudo vppctl show inacl
+  type ip4`, `show classify tables`): head = (src MAC at IP-16, src IP) per
+  open lease binding, tail = src 0.0.0.0 for DHCP, miss -> drop. The lease
+  watcher re-applies on every binding open/close (~1.1 s lease -> first
+  packet).
+- Not MACIP: VPP 26.10's MACIP dropped all IPv4 on this 0x8100/0x8100 QinQ
+  sub-interface (fine on untagged). See ADR-016 for traces.
+- Static addresses without a lease are dropped: lab tests use DHCP. The
+  bypass suite's authorized phase leases and activates its own address
+  (`sudo python3 -m controller.bypass_suite --phase authorized`).
+- Rollback: set `log_only` in desired state, restart the controller.
 
 ## Lease bindings (Phase 5, P5-T4/T6)
 
@@ -258,8 +273,9 @@ sudo unbound-checkconf
    fetches it asynchronously after activation); persist the portal host
    route; the lab reuses the CN `bsnl-vpp-portal-client` certificate issued
    2026-11-11 by the lab CA (expires 2027-11-11).
-2. **Phase 6 remainder:** HTTP redirect DONE 2026-11-17 (ADR-015). Left:
-   MACIP enforcement (`mac_enforcement` is `log_only`), D-09 ACL vs SVS
+2. **Phase 6 remainder:** HTTP redirect (ADR-015) and MAC/IP enforcement
+   (ADR-016) DONE 2026-11-17. Left: ARP protection (static neighbours from
+   bindings), portal MACSecurityPolicy -> tenant mode sync, D-09 ACL vs SVS
    measurement at 1k/10k subscribers (now two ACL replaces per login),
    Unbound reload batching at churn (ADR-014 limits), captive detection on
    real Android/iOS/Windows clients.

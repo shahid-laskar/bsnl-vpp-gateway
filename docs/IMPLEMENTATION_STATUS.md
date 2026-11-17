@@ -36,6 +36,8 @@ Evidence lives in `artifacts/` (this repo) and
   (`artifacts/test-reports/2026-11-17-restart-policy-recovery.txt`).
 - Pre-auth HTTP redirect (ADR-015, 2026-11-17): ABF policy on the tenant
   sub-interface + `bsnl-vpp-redirector` on 198.51.100.2:8080.
+- MAC/IP enforcement (ADR-016, 2026-11-17): lab tenant `mac_enforcement:
+  enforce`; classifier chain on host-vpp-access.101 follows lease bindings.
 - Resolver: Unbound 1.19.2 split-horizon views (ADR-014); dnsmasq disabled,
   config kept for rollback.
 - Portal integration (2026-11-17): `/etc/bsnl-vpp-gateway/controller.env`
@@ -140,7 +142,7 @@ Everything is on gateway `main` and portal `vpp-setup`, both pushed to
 | Bypass suite: DoT, foreign DNS, spoofed source, IPv6 RA/ND | VERIFIED (2026-11-16) | both phases pass. In the authorized phase the DoT probe is informational: VPP runs no TCP stack, so permitted TCP to its own address is punted and dropped without RST (trace: acl permit → ip4-receive → punt); ICMP is the authorized-path evidence |
 | RFC 8908 Captive Portal API | TESTED | portal `GET /portal/captive-api/`; live after django restart |
 | HTTP redirector + ABF for tcp/80 | VERIFIED (2026-11-17) | ADR-015: tenant ACL permits tenant tcp/80 after the protected denies; controller-owned ABF policy (`bsnl:abf/<tenant>`, CRC-pinned) steers it to 198.51.100.2, nft redirects to `bsnl-vpp-redirector` (302 to the portal login). Bypass suite 17/17 in both phases (HTTP to any host -> 302; authorized subscriber's HTTP to its destinations not redirected; management LAN HTTP blocked), portal E2E 8/8, 3 VPP restarts recover in 4.95 s with ABF re-created; `artifacts/test-reports/2026-11-17-p6-http-redirect.txt` |
-| MACIP enforcement | OPEN | lab stays `log_only` |
+| MAC/IP source enforcement | VERIFIED (2026-11-17) | ADR-016: controller-owned classifier chain (ip4-inacl) from open lease bindings; lab tenant `enforce`. MACIP ACLs dropped all IPv4 on the 0x8100/0x8100 sub-interface (works untagged), so not used. Unleased in-subnet source and spoofed MAC for a leased IP dropped in both phases; lease -> first forwarded packet 1.11-1.12 s; survives VPP restarts; `artifacts/test-reports/2026-11-17-p6-mac-enforcement.txt`. ARP not filtered (follow-up) |
 | D-09 mechanism | PROVISIONAL | ADR-010: ACL (candidate B); SVS (A) not measured |
 
 ### P7–P12

@@ -63,9 +63,8 @@ with `tools/api_crc_snapshot.py` before restarting the controller.
 ```bash
 sudo python3 -m controller.dhcp_qualification          # lease, option 114, DNS, portal HTTP, deny probe
 sudo python3 -m controller.bypass_suite                # pre-auth negatives (works with the static ACL too)
-sudo python3 -m tests.lab.controller_client activate --ip 10.9.101.50 --minutes 10   # signed (mTLS + HMAC)
-sudo python3 -m controller.bypass_suite --phase authorized --static-ip 10.9.101.50   # after activating .50
-sudo python3 -m tests.lab.controller_client deactivate --ip 10.9.101.50
+sudo python3 -m controller.bypass_suite --phase authorized   # leases, activates (signed) and deactivates its own address
+# --static-ip only works for log_only tenants: with MAC enforcement (ADR-016) an address without a lease is dropped
 sudo python3 -m tests.lab.portal_e2e --username vpplab1 --password-file FILE        # real portal login
 ```
 
@@ -77,6 +76,7 @@ address). Do not widen `authenticated_destinations` before NAT and IPDR (P7).
 ```bash
 systemctl is-active vpp bsnl-vpp-lab-links bsnl-vpp-portal-path bsnl-vpp-redirector isc-kea-dhcp4-server unbound bsnl-vpp-controller
 sudo vppctl show abf policy; sudo vppctl show abf attach host-vpp-access.101
+sudo vppctl show inacl type ip4; sudo vppctl show classify tables   # MAC/IP chain (ADR-016)
 sudo vppctl show interface address
 sudo vppctl show acl-plugin acl
 sudo vppctl show acl-plugin interface

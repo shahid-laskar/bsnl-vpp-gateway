@@ -1,0 +1,63 @@
+# Phase 6 MAC/IP source enforcement (ADR-016) - lab verification 2026-11-17T06:56:21Z
+# gateway main 603070e Enforce MAC/IP source from lease bindings with a classifier chain (Phase 6); lab tenant mac_enforcement=enforce
+
+## VPP classifier chain
+ Intfc idx      Classify table		Interface name
+         3                   1		host-vpp-access.101
+  TableIdx  Sessions   NextTbl  NextNode
+         1         0         2         0
+  nbuckets 4096, skip 0 match 2 flag 1 offset -16
+  mask ffffffffffff00000000000000000000000000000000000000000000ffffffff
+  TableIdx  Sessions   NextTbl  NextNode
+         2         1        -1         0
+  nbuckets 2, skip 0 match 1 flag 1 offset 0
+  mask 000000000000000000000000ffffffff
+
+## dhcp_qualification
+ok {'capture_ready': True, 'dhcp_lease': True, 'dhcp_option_114': True, 'dns': True, 'portal_http': True, 'preauth_deny': True}
+
+## bypass suite, pre-auth
+ok 21 checks mode: enforce failed: []
+   forwarded_after_address {'seconds': 1.12}
+   http_authorized_target_redirected_preauth {'result': '302'}
+   mac_unleased_source {'mode': 'enforce', 'reachable': False}
+   mac_spoofed_for_leased_ip {'mode': 'enforce', 'reachable': False}
+   mac_restored_forwarded {}
+
+## bypass suite, authorized (own DHCP lease, activated with the signed lab client)
+ok 22 checks mode: enforce failed: []
+   forwarded_after_address {'seconds': 1.11}
+   activation_enforced {'address': '10.9.101.53'}
+   http_authorized_target_not_redirected {'result': 'timeout'}
+   mac_unleased_source {'mode': 'enforce', 'reachable': False}
+   mac_spoofed_for_leased_ip {'mode': 'enforce', 'reachable': False}
+   mac_restored_forwarded {}
+
+## portal end to end (real login)
+ok 9 checks mode: None failed: []
+   forwarded_after_lease {'seconds': 1.12}
+
+## VPP restart recovery (3 runs, DHCP lease)
+{'ip': '10.9.101.55', 'target': '192.0.2.1', 'forwarded_after_address_s': 1.11, 'preauth_blocked': True, 'activation_enforced': True, 'authorized_before': True, 'deactivation_enforced': True, 'blocked_after_deactivation': True, 'ok': True}
+   {'run': 1, 'systemctl_restart_s': 0.11, 'static_acl_bound_s': 2.53, 'authorized_again_s': 5.2, 'controller_lag_s': 2.67}
+   {'run': 2, 'systemctl_restart_s': 0.11, 'static_acl_bound_s': 2.53, 'authorized_again_s': 4.95, 'controller_lag_s': 2.42}
+   {'run': 3, 'systemctl_restart_s': 0.12, 'static_acl_bound_s': 2.54, 'authorized_again_s': 4.95, 'controller_lag_s': 2.42}
+
+## after the restarts
+         3                   1		host-vpp-access.101
+ok 21 checks mode: enforce failed: []
+   forwarded_after_address {'seconds': 1.11}
+   http_authorized_target_redirected_preauth {'result': '302'}
+   mac_unleased_source {'mode': 'enforce', 'reachable': False}
+   mac_spoofed_for_leased_ip {'mode': 'enforce', 'reachable': False}
+   mac_restored_forwarded {}
+
+## controller journal (lease-driven applies)
+Nov 17 06:57:48 bsnl-vpp python3[192072]: INFO bsnl_vpp.reconcile: reconcile: {'expired': 0, 'pruned': 0, 'applied': True, 'writes': ['sw_interface_tag_add_del', 'sw_interface_set_mtu', 'acl_add_repla
+Nov 17 06:57:48 bsnl-vpp python3[192072]: INFO bsnl_vpp.reconcile: restart recovery: desired state re-applied 2.0 s after reconnect (writes: ['sw_interface_tag_add_del', 'sw_interface_set_mtu', 'acl_a
+Nov 17 06:57:56 bsnl-vpp python3[192072]: INFO bsnl_vpp.reconcile: reconcile: {'expired': 0, 'pruned': 0, 'applied': True, 'writes': ['sw_interface_tag_add_del', 'sw_interface_set_mtu', 'acl_add_repla
+Nov 17 06:57:56 bsnl-vpp python3[192072]: INFO bsnl_vpp.reconcile: restart recovery: desired state re-applied 2.0 s after reconnect (writes: ['sw_interface_tag_add_del', 'sw_interface_set_mtu', 'acl_a
+Nov 17 06:58:03 bsnl-vpp python3[192072]: INFO bsnl_vpp.reconcile: reconcile: {'expired': 0, 'pruned': 0, 'applied': True, 'writes': ['classify_add_del_session'], 'dns_reloaded': False}
+
+## bsnl-vpp-lab-check
+HEALTHY
