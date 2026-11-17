@@ -15,7 +15,8 @@ Contents:
   and audit, subscriber lifecycle, CRC-pinned VPP adapter, QinQ provisioning,
   tenant ACL policy, host-service rendering, lab qualification and bypass tools.
 - `deployment/`: VPP startup profile and `bsnl-lab.cli`, systemd units, Kea,
-  dnsmasq, nftables, install and health-check scripts.
+  Unbound split DNS (dnsmasq kept for rollback), nftables, install and
+  health-check scripts.
 - `config/`: JSON schemas (desired state, API v1), golden contract vectors,
   lab topology, desired state and host-service settings.
 - `artifacts/`: API CRC snapshot and test reports.

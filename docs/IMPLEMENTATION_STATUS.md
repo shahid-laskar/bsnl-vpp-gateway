@@ -1,6 +1,6 @@
 # BSNL VPP Gateway — Implementation Status
 
-Updated: 2026-11-16 (remediation steps 1–6 and Phase 5 P5-T4/T5/T6 on `main`; lab runs done).
+Updated: 2026-11-17 (remediation steps 1–6, Phase 5 P5-T4/T5/T6, VPP writes and restart recovery on `main`, pushed; lab runs done).
 Plan: `/opt/captive-portal/captive-portal-multitenant/docs/vpp/FINAL_IMPLEMENTATION_PLAN.md`.
 
 This is a **development lab** on Ubuntu VM `10.44.0.207` (VPP 26.10 over
@@ -22,29 +22,31 @@ Every gate row carries one status and links its evidence (FINAL plan P-15).
 Evidence lives in `artifacts/` (this repo) and
 `docs/vpp/evidence/` (portal repo). Test reports are regenerated per change.
 
-## Current runtime state (2026-11-16)
+## Current runtime state (2026-11-17)
 
-- The lab dataplane was **down** from 2026-11-13 06:35 UTC (vppctl oneshot
-  units raced the VPP restart; Kea config made unreadable by the host-service
-  applier). Fixed in remediation step 1 and reinstalled by the operator with
-  `deployment/bin/bsnl-vpp-lab-install`; `bsnl-vpp-lab-check` passed all
-  dataplane checks afterwards (its one false failure was a check bug, fixed).
-- The 5-cycle restart test (`tests/lab/test_restart_recovery.sh`) has **not
-  yet passed** end to end (stopped on that false failure): **READY-TO-RUN**.
-- 2026-11-16: the controller unit from `main` is installed and running in
-  observe mode (`--observe-vpp`, API CRCs OK against VPP 26.10; writes were
-  turned **on** later the same day, see below)
-  with Kea lease sync (`SupplementaryGroups=_kea`, `--kea-lease-file`). Kea was
-  reinstalled from the repo: option 114 now carries the RFC 8908 API URI.
-  Backup of the replaced files: `/root/bsnl-p5-install-20261116T111529.tgz`.
-- 2026-11-16: the resolver is **Unbound 1.19.2** with split-horizon views
-  (ADR-014); dnsmasq is disabled (config kept for rollback). Backup:
-  `/root/bsnl-unbound-install-20261116T113548.tgz`.
+- Dataplane: VPP applies `deployment/vpp/bsnl-lab.cli` at start-up (no
+  oneshot races); af_packet MACs pinned. 5-cycle restart test passes, fixture
+  healthy 2–3 s after `systemctl restart vpp`
+  (`artifacts/test-reports/2026-11-16-restart-recovery-5.txt`).
+- Controller: unit from `main` with `--observe-vpp --enable-vpp-writes`,
+  Kea lease sync and Unbound view sync. It owns the tenant sub-interface and
+  tagged ACL; static ACL 0 is unbound while it runs. After a VPP restart it
+  re-applies within ~2.5 s of VPP's startup config; authenticated subscribers
+  are back in 3.8–5.0 s
+  (`artifacts/test-reports/2026-11-17-restart-policy-recovery.txt`).
+- Resolver: Unbound 1.19.2 split-horizon views (ADR-014); dnsmasq disabled,
+  config kept for rollback.
+- Not yet configured: HMAC secret / client allowlist (`controller.env`), portal
+  routers with `dataplane_type="vpp"`. No subscriber internet path (P7).
+- Backups and rollbacks: `/root/bsnl-p5-install-20261116T111529.tgz`,
+  `/root/bsnl-unbound-install-20261116T113548.tgz`,
+  `/root/bsnl-vpp-controller.service.pre-writes`,
+  `/root/bsnl-lab.cli.pre-hwaddr`.
 
 ## Branches
 
-Remediation steps 1–6 and Phase 5 lease bindings (P5-T4/T6) are merged:
-gateway `main`, portal `vpp-setup` (merge commit `a14bd2a`). Not pushed.
+Everything is on gateway `main` and portal `vpp-setup`, both pushed to
+`origin` (2026-11-17). The older review branches are merged.
 
 ## Phase gates
 

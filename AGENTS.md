@@ -46,24 +46,27 @@ documented `0x8100` lab fixture unless explicitly re-qualifying it.
 - Persistent Linux bridge/veth and VPP af_packet interfaces.
 - L3 and QinQ service interface.
 - VPP DHCP proxy to Kea; Kea advertises DNS and RFC 8910 option 114 with
-  https://wifi.bsnl.co.in/portal/login/.
+  the RFC 8908 API URI https://wifi.bsnl.co.in/portal/captive-api/.
 - Unbound split-horizon DNS (ADR-014): before login, portal and captive-check
   names answer 10.44.0.209 and other names are REFUSED; authenticated
   subscribers get normal recursion. dnsmasq is disabled (rollback only).
 - VPP route to 10.44.0.0/22; Linux forwarding and scoped SNAT allow
   subscribers to reach the existing portal without a portal-host return route.
-- Persistent pre-auth ACL on host-vpp-access.101: DHCP, DNS to 198.51.100.2,
-  and HTTP/HTTPS/diagnostic ICMP to the portal are allowed; unmatched IPv4 is
-  denied.
+- Subscriber policy on host-vpp-access.101 is the controller-owned tagged ACL
+  `bsnl:acl/<tenant>` (writes on since 2026-11-16): pre-auth allowlist (DHCP,
+  DNS to 198.51.100.2, portal HTTP/HTTPS/ICMP), protected prefixes, one permit
+  per authenticated /32 to the lab target 192.0.2.0/24, deny-all. The static
+  ACL 0 from `bsnl-lab.cli` is only in force between a VPP start and the
+  controller's re-apply (seconds) or when writes are off.
 - Subscriber lifecycle control plane supports authenticated activation,
   deactivation, expiry, tenant validation, durable idempotency, conflict
   detection, and audit events.
 - Controller API contract v1 (see ADR-007): mTLS with optional client-name
   allowlist, plus HMAC (timestamp + nonce + method + path + Idempotency-Key +
-  body hash) when BSNL_VPP_PORTAL_HMAC_SECRET is configured. Responses report
-  `dataplane_enforced` (false while the adapter is dry-run).
-- Controller request bodies are bounded to 1 MiB; VPP policy writes remain
-  disabled because the adapter is still dry-run.
+  body hash) when BSNL_VPP_PORTAL_HMAC_SECRET is configured (not configured in
+  the lab yet: no `/etc/bsnl-vpp-gateway/controller.env`). Responses report
+  `dataplane_enforced`, true only when VPP confirmed the change.
+- Controller request bodies are bounded to 1 MiB.
 
 Verified from isolated QinQ namespaces: DHCP lease, DNS mapping, portal HTTP
 /generate_204 200, HTTPS /portal/login/ 200, portal reachability, and an
@@ -90,19 +93,19 @@ restart. The old vppctl oneshot units are retired to `deployment/legacy/`
 `sudo sh deployment/bin/bsnl-vpp-lab-install`; check it with
 `sudo bsnl-vpp-lab-check` and `sudo sh tests/lab/test_restart_recovery.sh`.
 
-Useful read-only checks on the VM:
+Useful read-only checks on the VM (vppctl and the API socket need root or
+`sudo -u bsnl-vpp`; `shahid` cannot open `/run/vpp/api.sock`):
 
 ```bash
-systemctl is-active vpp bsnl-vpp-lab-links bsnl-vpp-afpacket \
-  bsnl-vpp-l3-forwarding bsnl-vpp-qinq bsnl-vpp-dhcp-proxy \
-  bsnl-vpp-portal-path bsnl-vpp-preauth isc-kea-dhcp4-server dnsmasq
-ip -br addr
-ip route
-vppctl show interface address
-vppctl show acl-plugin interface
-vppctl show ip fib 10.44.0.0/22
+sudo bsnl-vpp-lab-check          # one-shot health check (HEALTHY/UNHEALTHY)
+systemctl is-active vpp bsnl-vpp-lab-links bsnl-vpp-portal-path \
+  bsnl-vpp-controller isc-kea-dhcp4-server unbound
+sudo vppctl show interface address
+sudo vppctl show acl-plugin interface      # sw_if_index 3: input acl(s): <tagged ACL>
+sudo vppctl show acl-plugin acl            # {cli} = static ACL 0, bsnl:acl/... = controller
+sudo journalctl -u bsnl-vpp-controller -n 50
 kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
-dnsmasq --test
+sudo unbound-checkconf
 ```
 
 ## Controller (remediation step 4)
@@ -127,8 +130,8 @@ dnsmasq --test
   1 s watch loop (`--vpp-watch-interval`) re-applies once `bsnl-lab.cli` has
   finished (`--vpp-startup-settle-seconds`, 10 s max): authenticated
   subscribers are back in 3.8–5.0 s (lab, 2026-11-17).
-  `subscriber_policy_enforced` stays false until step 5, so the portal keeps
-  sessions out of `fully_active`.
+  `subscriber_policy_enforced` is true only while the last policy apply
+  against the current VPP connection succeeded.
 - Decision (lab, until D-06): tenants use VRF 0 (shared FIB). The live
   sub-interface and the portal route are in table 0; the earlier desired state
   said VRF 101, which would have isolated subscribers from the portal once
@@ -193,20 +196,60 @@ dnsmasq --test
 - `unbound-resolvconf.service` is masked: the host keeps systemd-resolved.
 - See ADR-014.
 
-## Next work
+## State at handoff (2026-11-17)
 
-1. Done (remediation step 2): the Django portal client speaks contract v1;
-   cross-repo golden vectors and an mTLS+HMAC E2E run pass.
-2. Provision the portal client certificate, BSNL_VPP_ALLOWED_CLIENTS and the
-   shared HMAC secret out-of-band; never commit them.
-3. Replace the dry-run adapter and hard-coded ACL index/rules with validated,
-   idempotent desired-state reconciliation and safe per-subscriber policy.
-4. Add negative tests for IPv6, DoH/DoT, QUIC, spoofed source IP/MAC, and
-   expired/deactivated subscribers before broadening policy.
-5. Complete captive redirect behavior and RFC 8908 API only after an explicit
-   design for the existing portal integration.
-6. Perform hardware/DPDK, throughput, scale, DHCP-churn, failure-recovery,
-   policy, and accounting qualification.
+- Gateway `main` = `origin/main` (pushed 2026-11-17). Portal `vpp-setup` =
+  `origin/vpp-setup`. Old review branches (`fix/step*`, `docs/step6-*`,
+  `feat/p5-lease-bindings`) are merged; they can be deleted.
+- Live lab runs the `main` build: controller with `--observe-vpp
+  --enable-vpp-writes --kea-lease-file ... --unbound-views-file ...`
+  (`deployment/systemd/bsnl-vpp-controller.service`), Unbound split DNS,
+  pinned VPP MACs. `sudo bsnl-vpp-lab-check` HEALTHY; 121 unit tests pass.
+- Rollbacks: writes off -> `/root/bsnl-vpp-controller.service.pre-writes`
+  (reinstall, restart controller, then VPP); Unbound ->
+  `sudo sh deployment/bin/bsnl-vpp-unbound-install --rollback`; startup CLI
+  before MAC pinning -> `/root/bsnl-lab.cli.pre-hwaddr`. Host backups:
+  `/root/bsnl-*-install-*.tgz`.
+- Lab verification commands (root): `sh tests/lab/test_restart_recovery.sh 5`,
+  `python3 -m tests.lab.restart_policy_recovery --runs 5`,
+  `python3 -m controller.bypass_suite [--phase authorized --static-ip IP]`,
+  `python3 -m controller.dhcp_qualification`.
 
-Do not enable authenticated internet forwarding as an assumed next step.
+## Next work (plan order)
+
+1. **Portal -> VPP end to end (step 2 of the 2026-11-16 roadmap).** Provision
+   out-of-band, never committed: portal client certificate, controller
+   `BSNL_VPP_ALLOWED_CLIENTS` and the shared HMAC secret
+   (`/etc/bsnl-vpp-gateway/controller.env` + portal `.env`); apply portal
+   migration `portal.0004`; set `VPP_CONTROLLER_*` settings and switch one
+   lab router to `dataplane_type="vpp"`; then a real login from a QinQ
+   namespace must reach `fully_active` with `dataplane_enforced: true`.
+2. **Phase 6 remainder:** HTTP redirector + ABF for tcp/80 (pre-auth HTTP to
+   any host -> portal), MACIP enforcement (`mac_enforcement` is `log_only`),
+   D-09 ACL vs SVS measurement at 1k/10k subscribers, Unbound reload batching
+   at churn (ADR-014 limits).
+3. **Phase 5 leftovers:** VPP neighbour table as secondary MAC source; D-19
+   resolver scale measurement.
+4. **Phase 7 (NAT44-ED + IPDR)** only after D-16 (IPDR legal fields) has an
+   owner. Until then do not widen `authenticated_destinations` beyond
+   192.0.2.0/24 and do not enable authenticated internet forwarding.
+5. Later: hardware/DPDK, throughput, scale, HA, accounting qualification.
+
+## Gotchas learned on this lab
+
+- `/etc/unbound/bsnl` must stay 2755 with 0644 files (Unbound AppArmor has no
+  dac_override); 0750 stopped Unbound (~1 min DNS outage on 2026-11-16).
+- VPP has no TCP stack (session layer off): TCP to VPP's own addresses is
+  punted and dropped without RST. Use ICMP to 192.0.2.1 as authorized-path
+  evidence.
+- tcpdump on QinQ frames needs `vlan and vlan and (...)` filters and
+  `--immediate-mode`, or captures are empty/intermittent.
+- `/usr/local/sbin/bsnl-vpp-lab-check` is a copy; reinstall it from the repo
+  after changing `deployment/bin/bsnl-vpp-lab-check` (a stale copy still
+  checked dnsmasq).
+- Runs under sudo leave root-owned `__pycache__` in worktrees; delete them with
+  sudo before `git worktree remove`.
+- Lab Kea has no `lease_cmds` hook; `/var/lib/kea` is `_kea 0750`.
+- Remote files must have LF line endings.
+
 Preserve VyOS behavior and its rollback role during VPP development.
