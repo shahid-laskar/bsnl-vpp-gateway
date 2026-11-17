@@ -256,16 +256,50 @@ class VppApiAdapter:
             self.last_apply_writes = writes
             return keys
 
+    def _svs_fast_path(self, desired_state: dict[str, Any], tenant_key: str, address: str, authorized: bool) -> bool:
+        """One SVS entry add/del for an SVS tenant (ADR-017), O(1) in the number
+        of subscribers. Only after a successful full apply on this connection;
+        any failure falls back to the full apply."""
+        from .svs import SvsEnforcer, svs_config
+        tenant = next((t for t in desired_state.get("tenants", []) if t.get("tenant_key") == tenant_key), None)
+        policy = tenant_policy(desired_state, tenant) if tenant else None
+        if not policy or policy.get("authorization") != "svs":
+            return False
+        with self._lock:
+            if not (self.connected and self.crc_ok) or self.policy_error or tenant_key not in (self.policy_applied or {}):
+                return False
+            try:
+                table, internet = svs_config(tenant, policy)
+                writes: list[str] = []
+                enforcer = SvsEnforcer(self._papi_call, lambda m, **kw: (writes.append(m), self._papi_call(m, **kw))[1])
+                enforcer.route(table, internet, address, authorized)
+            except Exception as exc:
+                LOG.info("SVS fast path for %s/%s not applied (%s); falling back to a full apply", tenant_key, address, exc)
+                return False
+            (self.policy_applied[tenant_key].add if authorized else self.policy_applied[tenant_key].discard)(address)
+            self.last_apply_writes = writes
+            return True
+
+    def _papi_call(self, method: str, **kwargs: Any) -> Any:
+        result = getattr(self.client.api, method)(**kwargs)
+        retval = int(getattr(result, "retval", 0) or 0)
+        if retval:
+            raise RuntimeError(f"{method} failed with retval={retval}")
+        return result
+
     def enforce_subscriber(self, desired_state: dict[str, Any], session_key: str, authorized: bool) -> bool:
         """Apply desired state now and confirm this subscriber's permit is
         present (authorized) or absent (deauthorized) in VPP."""
         if not self.enable_writes:
             return False
+        tenant_key, _, address = session_key.rpartition("/")
+        fast = self._svs_fast_path(desired_state, tenant_key, address, authorized)
+        if fast:
+            return True
         try:
             self.apply(desired_state)
         except Exception as exc:
             LOG.error("immediate policy enforcement failed for %s: %s", session_key, exc)
             return False
-        tenant_key, _, address = session_key.rpartition("/")
         applied = (self.policy_applied or {}).get(tenant_key)
         return applied is not None and (address in applied) == authorized

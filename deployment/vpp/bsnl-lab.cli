@@ -19,12 +19,24 @@ set interface ip address host-vpp-wan 198.51.100.1/24
 ip route add 10.44.0.0/22 via 198.51.100.2 host-vpp-wan
 
 comment { QinQ tenant circuit, outer 0x8100/200 inner 0x8100/101 (was bsnl-vpp-qinq) }
+comment { D-09 candidate A (ADR-017): the tenant sits in captive VRF 101; the controller }
+comment { steers authenticated sources to the internet VRF (table 0) with SVS. }
+ip table add 101
 create sub-interfaces host-vpp-access 101 dot1q 200 inner-dot1q 101 exact-match
+set interface ip table host-vpp-access.101 101
 set interface ip address host-vpp-access.101 10.9.101.1/24
 set interface state host-vpp-access.101 up
 
-comment { DHCP relay to Kea on br-wan (was bsnl-vpp-dhcp-proxy) }
-set dhcp proxy server 198.51.100.2 src-address 198.51.100.1
+comment { Captive VRF 101: portal, resolver and a default route to the gateway host, }
+comment { whose nftables redirects tcp/80 to the redirector and drops the rest (ADR-015). }
+ip route add 10.44.0.209/32 table 101 via 198.51.100.2 next-hop-table 0
+ip route add 198.51.100.2/32 table 101 via 198.51.100.2 next-hop-table 0
+ip route add 0.0.0.0/0 table 101 via 198.51.100.2 next-hop-table 0
+comment { Internet VRF (table 0) back to the tenant: replies, DHCP to the relay address }
+ip route add 10.9.101.0/24 via ip4-lookup-in-table 101
+
+comment { DHCP relay to Kea on br-wan (was bsnl-vpp-dhcp-proxy); clients are in VRF 101 }
+set dhcp proxy server 198.51.100.2 src-address 198.51.100.1 rx-fib-id 101 server-fib-id 0
 
 comment { Pre-auth allowlist (was bsnl-vpp-preauth). First ACL on a fresh VPP is index 0. }
 set acl-plugin acl permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 80-80, permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 6 sport 0-65535 dport 443-443, permit src 10.9.101.0/24 dst 10.44.0.209/32 proto 1, permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 17 sport 0-65535 dport 53-53, permit src 10.9.101.0/24 dst 198.51.100.2/32 proto 6 sport 0-65535 dport 53-53, permit src 0.0.0.0/0 dst 255.255.255.255/32 proto 17 sport 68-68 dport 67-67

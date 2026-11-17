@@ -25,6 +25,8 @@ MESSAGES = [
     # MAC/IP source enforcement (ADR-016): classifier chain as ip4 input ACL.
     "classify_add_del_table", "classify_add_del_session", "classify_table_by_interface",
     "classify_table_info", "classify_session_dump", "input_acl_set_interface",
+    # Per-subscriber authorization with Source VRF Select (D-09 candidate A, ADR-017).
+    "svs_table_add_del", "svs_enable_disable", "svs_route_add_del", "svs_dump", "ip_route_dump",
 ]
 
 

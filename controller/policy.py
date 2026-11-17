@@ -149,7 +149,7 @@ def redirect_config(policy: dict[str, Any]) -> dict[str, str] | None:
 
 
 def compile_tenant_acl(tenant: dict[str, Any], policy: dict[str, Any], subscribers: list[dict[str, Any]],
-                       *, redirect: bool = False) -> list[AclRule]:
+                       *, redirect: bool = False, authorization: str = "acl") -> list[AclRule]:
     subnet = _tenant_subnet(tenant)
     rules = preauth_rules(policy, subnet)
     rules += [AclRule(DENY, ANY4, _net(p, "protected_destinations")) for p in policy.get("protected_destinations", [])]
@@ -158,8 +158,14 @@ def compile_tenant_acl(tenant: dict[str, Any], policy: dict[str, Any], subscribe
         # default). Traffic bridged by the access network never reaches VPP.
         rules.append(AclRule(DENY, ANY4, subnet))
     destinations = _destinations(policy)
-    for address in _authenticated(tenant, subnet, subscribers):
-        rules += [AclRule(PERMIT, f"{address}/32", dst) for dst in destinations]
+    if authorization == "svs":
+        # Static (ADR-017): every tenant source may try the authenticated
+        # destinations; only sources with an SVS entry are looked up in the
+        # internet VRF, the rest stay in the captive VRF that cannot reach them.
+        rules += [AclRule(PERMIT, subnet, dst) for dst in destinations]
+    else:
+        for address in _authenticated(tenant, subnet, subscribers):
+            rules += [AclRule(PERMIT, f"{address}/32", dst) for dst in destinations]
     if redirect:
         # Permitted here only so that the ABF policy (after the ACL on the
         # ip4-unicast arc) can steer it to the redirector; protected and
@@ -251,7 +257,8 @@ class VppPolicyEnforcer:
 
     MUTATING = frozenset({"acl_add_replace", "acl_interface_set_acl_list", "acl_del",
                           "abf_policy_add_del", "abf_itf_attach_add_del",
-                          "classify_add_del_table", "classify_add_del_session", "input_acl_set_interface"})
+                          "classify_add_del_table", "classify_add_del_session", "input_acl_set_interface",
+                          "ip_table_add_del_v2", "svs_table_add_del", "svs_enable_disable", "svs_route_add_del"})
     NEW_ACL = 0xFFFFFFFF
 
     def __init__(self, api: Any, enable_writes: bool = False) -> None:
@@ -265,6 +272,7 @@ class VppPolicyEnforcer:
               bindings: list[dict[str, Any]] | None = None) -> dict[str, set[str]]:
         """``bindings``: open lease bindings (MAC enforcement); None = no lease source."""
         from .mac_enforcement import MacEnforcer
+        from .svs import SvsEnforcer
         self.writes = []
         self.mac_enforced = {}
         if not self.enable_writes:
@@ -283,9 +291,19 @@ class VppPolicyEnforcer:
             if index is None:
                 raise RuntimeError(f"no VPP sub-interface for {tenant['tenant_key']}; cannot enforce policy")
             subscribers = state.get("subscribers", [])
+            authorization = policy.get("authorization", "acl")
+            if authorization not in ("acl", "svs"):
+                raise PolicyValidationError(f"authorization must be 'acl' or 'svs', not {authorization!r}")
             redirect = redirect_config(policy)
             exempt = None
-            if redirect is not None:
+            svs = SvsEnforcer(self._call, self._write)
+            svs_applied = None
+            if authorization == "svs":
+                # D-09 candidate A (ADR-017): per-subscriber state is one SVS
+                # entry each; the tenant ACL below is static. The HTTP redirect
+                # is the captive VRF's default route (fixture), so no ABF.
+                svs_applied = svs.apply(tenant, policy, index, subscribers)
+            if redirect is not None and authorization == "acl":
                 # Steering first: the tenant ACL's HTTP permit must never exist
                 # without the ABF policy that sends it to the redirector.
                 abf_rules = compile_redirect_acl(tenant, policy, subscribers)
@@ -294,7 +312,7 @@ class VppPolicyEnforcer:
                 abf_acl = self._converge_acl(abf_tag, abf_rules, existing.get(abf_tag))
                 self._converge_abf(abf_tag, abf_acl, redirect["next_hop"], index)
                 exempt = redirect_exempt_addresses(abf_rules)
-            rules = compile_tenant_acl(tenant, policy, subscribers, redirect=redirect is not None)
+            rules = compile_tenant_acl(tenant, policy, subscribers, redirect=redirect is not None, authorization=authorization)
             tag = acl_tag(tenant["tenant_key"])
             wanted_tags.add(tag)
             acl_index = self._converge_acl(tag, rules, existing.get(tag))
@@ -304,6 +322,10 @@ class VppPolicyEnforcer:
             # MAC/IP source check from lease bindings (ADR-016), after the ACL so
             # a permit is in place before traffic of a new binding is allowed.
             self.mac_enforced[tenant["tenant_key"]] = MacEnforcer(self._call, self._write).apply(tenant, index, bindings)
+            if svs_applied is not None:
+                applied[tenant["tenant_key"]] = svs_applied
+                continue
+            svs.remove(index)  # back from SVS to ACL mode: per-subscriber permits are written above
             authorized = authorized_addresses(rules)
             applied[tenant["tenant_key"]] = authorized if exempt is None else authorized & exempt
         # Unwanted objects go after every tenant ACL is rewritten (an HTTP

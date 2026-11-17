@@ -20,6 +20,9 @@ REPO = Path(__file__).resolve().parent.parent
 LAB = json.loads((REPO / "config" / "lab" / "desired-state.json").read_text())
 # ACL/ABF/restart behaviour only; MAC enforcement (lab: "enforce") is covered by test_phase6_mac.py.
 LAB["tenants"][0]["mac_enforcement"] = "log_only"
+# The ACL candidate of D-09 (rollback mode) in VRF 0; the lab runs SVS (test_d09_svs.py).
+LAB["policies"][LAB["tenants"][0]["pre_auth_policy_ref"]]["authorization"] = "acl"
+LAB["tenants"][0]["vrf_id"] = 0
 TENANT = LAB["tenants"][0]["tenant_key"]
 POLICY = LAB["policies"]["lab-preauth-v1"]
 SNAPSHOT = REPO / "artifacts" / "api-crc-26.10.json"

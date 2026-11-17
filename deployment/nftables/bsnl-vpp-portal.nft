@@ -8,6 +8,15 @@ table ip bsnl_vpp_portal {
     iifname "br-wan" ip saddr 10.9.101.0/24 counter drop
   }
 
+  # Subscribers may reach only DNS and the redirector on this host (the
+  # captive VRF's default route sends all pre-auth traffic here, ADR-017).
+  chain input {
+    type filter hook input priority filter; policy accept;
+    iifname "br-wan" ip saddr 10.9.101.0/24 ip daddr 198.51.100.2 udp dport 53 accept
+    iifname "br-wan" ip saddr 10.9.101.0/24 ip daddr 198.51.100.2 tcp dport { 53, 8080 } accept
+    iifname "br-wan" ip saddr 10.9.101.0/24 counter drop
+  }
+
   # Phase 6 (ADR-015): pre-auth HTTP that the VPP ABF policy steers to
   # 198.51.100.2 (any destination except the portal) goes to the local
   # redirector (bsnl-vpp-redirector.service), which answers 302 to the portal.

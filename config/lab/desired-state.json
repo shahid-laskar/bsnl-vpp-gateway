@@ -10,7 +10,8 @@
       "outer_tpid": "0x8100",
       "outer_vlan": 200,
       "inner_vlan": 101,
-      "vrf_id": 0,
+      "vrf_id": 101,
+      "svs_table_id": 1101,
       "gateway_ip": "10.9.101.1/24",
       "dhcp_ranges": [
         {
@@ -31,6 +32,8 @@
   "policies": {
     "lab-preauth-v1": {
       "mode": "allowlist",
+      "authorization": "svs",
+      "internet_vrf": 0,
       "dataplane_apply": true,
       "note": "Enforced only when the controller runs with --enable-vpp-writes; until then deployment/vpp/bsnl-lab.cli applies the static pre-auth ACL. authenticated_destinations is the lab fixture 192.0.2.0/24 (VPP's own host-vpp-access address): there is no NAT/upstream yet (step 7), so authorization opens no internet path.",
       "preauth_allow": [

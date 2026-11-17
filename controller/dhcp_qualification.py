@@ -93,6 +93,17 @@ def lab_mac_mode(outer_vlan: int, inner_vlan: int, desired_state: str = "config/
     return "log_only"
 
 
+def lab_authorization(outer_vlan: int, inner_vlan: int, desired_state: str = "config/lab/desired-state.json") -> str:
+    """Per-subscriber authorization mode (acl | svs, D-09) of the lab tenant's policy."""
+    with open(desired_state, encoding="utf-8") as handle:
+        state = json.load(handle)
+    for tenant in state.get("tenants", []):
+        if (tenant.get("outer_vlan"), tenant.get("inner_vlan")) == (outer_vlan, inner_vlan):
+            policy = (state.get("policies") or {}).get(tenant.get("pre_auth_policy_ref") or "", {})
+            return policy.get("authorization", "acl")
+    return "acl"
+
+
 def setup_namespace(ns: str, host_if: str, bridge: str, outer_vlan: int, inner_vlan: int, client_if: str = "eth0") -> tuple[str, ...]:
     """Throw-away subscriber: veth into ``bridge`` with a QinQ interface
     ``eth0.<outer>.<inner>`` inside netns ``ns``. Returns the netns exec prefix."""

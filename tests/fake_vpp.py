@@ -248,7 +248,85 @@ class FakeClassifyMixin:
             return t["miss"] == self.NONE
 
 
-class FakeVppApi(FakeAclMixin, FakeAbfMixin, FakeClassifyMixin):
+class FakeSvsMixin:
+    """Source VRF Select: tables, interface enablement, /32 -> lookup-table entries."""
+
+    SPECIAL = ("0.0.0.0/0", "0.0.0.0/32", "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32")
+
+    def _svs_init(self):
+        if not hasattr(self, "svs_tables"):
+            self.svs_tables: set[int] = set()
+            self.svs_enabled: dict[int, int] = {}
+            self.svs_routes: dict[int, dict[str, int]] = {}
+
+    def svs_table_add_del(self, is_add, af, table_id):
+        self._svs_init()
+        self.calls.append("svs_table_add_del")
+        if is_add:
+            if table_id not in self.vrfs:
+                return SimpleNamespace(retval=-2)
+            self.svs_tables.add(table_id)
+            self.svs_routes.setdefault(table_id, {})
+        else:
+            if table_id in self.svs_enabled.values():
+                return SimpleNamespace(retval=-142)
+            self.svs_tables.discard(table_id)
+            self.svs_routes.pop(table_id, None)
+        return SimpleNamespace(retval=0)
+
+    def svs_enable_disable(self, is_enable, af, table_id, sw_if_index):
+        self._svs_init()
+        self.calls.append("svs_enable_disable")
+        if is_enable:
+            if table_id not in self.svs_tables:
+                return SimpleNamespace(retval=-6)
+            self.svs_enabled[sw_if_index] = table_id
+        elif self.svs_enabled.get(sw_if_index) == table_id:
+            del self.svs_enabled[sw_if_index]
+        else:
+            return SimpleNamespace(retval=-6)
+        return SimpleNamespace(retval=0)
+
+    def svs_route_add_del(self, is_add, prefix, table_id, source_table_id):
+        self._svs_init()
+        self.calls.append("svs_route_add_del")
+        routes = self.svs_routes.get(table_id)
+        if routes is None:
+            return SimpleNamespace(retval=-6)
+        key = str(ipaddress.ip_network(str(prefix)))
+        if is_add:
+            routes[key] = source_table_id
+        elif routes.pop(key, None) is None:
+            return SimpleNamespace(retval=-6)
+        return SimpleNamespace(retval=0)
+
+    def svs_dump(self):
+        self._svs_init()
+        self.calls.append("svs_dump")
+        return [SimpleNamespace(table_id=t, sw_if_index=sw, af=0) for sw, t in sorted(self.svs_enabled.items())]
+
+    def ip_route_dump(self, table):
+        self._svs_init()
+        self.calls.append("ip_route_dump")
+        tid = table["table_id"]
+        routes = dict(self.svs_routes.get(tid, {}))
+        rows = [(p, None) for p in self.SPECIAL] + list(routes.items())
+        return [SimpleNamespace(route=SimpleNamespace(table_id=tid, prefix=ipaddress.ip_network(p),
+                                                      paths=[SimpleNamespace(table_id=lookup)] if lookup is not None else []))
+                for p, lookup in rows]
+
+    def lookup_table(self, sw_if_index, src):
+        """FIB table a packet from ``src`` on ``sw_if_index`` is forwarded in."""
+        self._svs_init()
+        table = self.svs_enabled.get(sw_if_index)
+        if table is not None:
+            for prefix, lookup in self.svs_routes.get(table, {}).items():
+                if ipaddress.ip_address(src) in ipaddress.ip_network(prefix):
+                    return lookup
+        return self.tables[sw_if_index]
+
+
+class FakeVppApi(FakeAclMixin, FakeAbfMixin, FakeClassifyMixin, FakeSvsMixin):
     def __init__(self) -> None:
         self.interfaces: dict[int, dict] = {}
         self.addresses: dict[int, set[str]] = {}

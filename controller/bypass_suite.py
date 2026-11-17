@@ -18,7 +18,7 @@ import json
 import re
 import subprocess
 
-from .dhcp_qualification import cleanup, lab_mac_mode, setup_namespace, try_run, wait_forwarded
+from .dhcp_qualification import cleanup, lab_authorization, lab_mac_mode, setup_namespace, try_run, wait_forwarded
 
 TIMEOUT, REFUSED = 28, 7  # curl exit codes
 
@@ -94,6 +94,7 @@ def main() -> int:
     qinq_if = f"eth0.{args.outer_vlan}.{args.inner_vlan}"
     checks: dict[str, dict] = {}
     mac_mode = lab_mac_mode(args.outer_vlan, args.inner_vlan) if args.mac_enforcement == "auto" else args.mac_enforcement
+    authorization = lab_authorization(args.outer_vlan, args.inner_vlan)
     activated_ip = None
 
     def expect(name, ok, **detail):
@@ -140,7 +141,12 @@ def main() -> int:
         # the portal, in both phases for destinations outside the subscriber's
         # authenticated_destinations; never for the management LAN.
         code, location = http_redirect(nsx, args.http_probe)
-        expect("http_redirected_to_portal", code == "302" and location == args.portal_login_url, result=code, location=location)
+        if authorized and authorization == "svs":
+            # Authenticated sources use the internet VRF (ADR-017): no redirect;
+            # the lab internet VRF has no route there (P7), so the SYN goes nowhere.
+            expect("http_not_redirected_when_authenticated", code != "302", result=code)
+        else:
+            expect("http_redirected_to_portal", code == "302" and location == args.portal_login_url, result=code, location=location)
         code, location = http_redirect(nsx, args.authorized_target)
         if authorized:
             # Not steered; VPP has no TCP stack, so the permitted SYN gets no answer.
@@ -208,7 +214,7 @@ def main() -> int:
                 expect("deactivation", False, error=f"{type(exc).__name__}: {exc}")
         cleanup(ns, host_if)
 
-    report = {"phase": args.phase, "mac_enforcement": mac_mode, "checks": checks, "ok": all(c["ok"] for c in checks.values())}
+    report = {"phase": args.phase, "mac_enforcement": mac_mode, "authorization": authorization, "checks": checks, "ok": all(c["ok"] for c in checks.values())}
     print(json.dumps(report, indent=2))
     return 0 if report["ok"] else 1
 
