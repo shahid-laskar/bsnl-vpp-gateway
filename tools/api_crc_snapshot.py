@@ -22,6 +22,9 @@ MESSAGES = [
     # ABF is an in-progress API in 26.x (not under the compatibility process): pinned here,
     # re-verified on every upgrade (plan section 3, ADR-015).
     "abf_policy_add_del", "abf_policy_dump", "abf_itf_attach_add_del", "abf_itf_attach_dump",
+    # MAC/IP source enforcement (ADR-016): classifier chain as ip4 input ACL.
+    "classify_add_del_table", "classify_add_del_session", "classify_table_by_interface",
+    "classify_table_info", "classify_session_dump", "input_acl_set_interface",
 ]
 
 

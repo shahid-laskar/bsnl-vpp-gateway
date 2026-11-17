@@ -18,7 +18,7 @@ import json
 import re
 import subprocess
 
-from .dhcp_qualification import cleanup, setup_namespace, try_run
+from .dhcp_qualification import cleanup, lab_mac_mode, setup_namespace, try_run, wait_forwarded
 
 TIMEOUT, REFUSED = 28, 7  # curl exit codes
 
@@ -67,7 +67,12 @@ def parse_dig(out):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--phase", choices=("preauth", "authorized"), default="preauth")
-    parser.add_argument("--static-ip", help="use this address instead of DHCP (must be the activated subscriber in --phase authorized)")
+    parser.add_argument("--static-ip", help="use this address instead of DHCP (log_only tenants only: with MAC "
+                        "enforcement an address without a lease is dropped). Default: DHCP, and in --phase authorized "
+                        "the leased address is activated through the controller and deactivated at the end")
+    parser.add_argument("--mac-enforcement", choices=("auto", "enforce", "log_only"), default="auto",
+                        help="expected tenant mode (auto: config/lab/desired-state.json)")
+    parser.add_argument("--unbound-probe-ip", default="10.9.101.250", help="in-subnet address outside the DHCP pool")
     parser.add_argument("--gateway", default="10.9.101.1")
     parser.add_argument("--prefix-len", type=int, default=24)
     parser.add_argument("--portal", default="10.44.0.209")
@@ -88,6 +93,8 @@ def main() -> int:
     ns, host_if = args.namespace, args.host_if
     qinq_if = f"eth0.{args.outer_vlan}.{args.inner_vlan}"
     checks: dict[str, dict] = {}
+    mac_mode = lab_mac_mode(args.outer_vlan, args.inner_vlan) if args.mac_enforcement == "auto" else args.mac_enforcement
+    activated_ip = None
 
     def expect(name, ok, **detail):
         checks[name] = {"ok": bool(ok), **detail}
@@ -102,6 +109,15 @@ def main() -> int:
             try_run(*nsx, "dhclient", "-1", "-pf", f"/run/{ns}.pid", "-lf", f"/run/{ns}.leases", qinq_if, timeout=40)
         address = try_run(*nsx, "ip", "-4", "-o", "addr", "show", "dev", qinq_if).stdout.split()
         expect("address_configured", any("/" in a and a.startswith("10.") for a in address), interface=" ".join(address[3:4]))
+        leased = next((a.split("/")[0] for a in address if "/" in a and a.startswith("10.")), None)
+        # Lease -> first forwarded packet (MAC enforcement programs VPP from the binding).
+        first_packet = wait_forwarded(nsx, args.portal, 10)
+        expect("forwarded_after_address", first_packet is not None, seconds=first_packet)
+        if args.phase == "authorized" and not args.static_ip and leased:
+            from tests.lab.controller_client import activate
+            reply = activate(leased, minutes=10)
+            activated_ip = leased
+            expect("activation_enforced", reply.get("dataplane_enforced") is True, address=leased)
 
         # Allowed in every phase (pre-auth essentials)
         expect("dns_gateway_resolver", dns(nsx, args.resolver))
@@ -133,6 +149,22 @@ def main() -> int:
             expect("http_authorized_target_redirected_preauth", code == "302" and location == args.portal_login_url, result=code)
         code, _ = http_redirect(nsx, args.management_probe)
         expect("http_management_lan_blocked", code == "timeout", result=code)
+
+        # MAC/IP source enforcement (ADR-016): an in-subnet address without a
+        # lease, and the leased address from another MAC, are dropped when the
+        # tenant enforces; with log_only the ACL alone decides (portal ICMP ok).
+        enforced = mac_mode == "enforce"
+        try_run(*nsx, "ip", "addr", "add", f"{args.unbound_probe_ip}/32", "dev", qinq_if)
+        reachable = ping(nsx, args.portal, source=args.unbound_probe_ip)
+        expect("mac_unleased_source", reachable != enforced, mode=mac_mode, reachable=reachable)
+        try_run(*nsx, "ip", "addr", "del", f"{args.unbound_probe_ip}/32", "dev", qinq_if)
+        if leased and not args.static_ip:
+            original = try_run(*nsx, "cat", f"/sys/class/net/{qinq_if}/address").stdout.strip()
+            try_run(*nsx, "ip", "link", "set", "dev", qinq_if, "address", "02:5b:00:00:00:01")
+            reachable = ping(nsx, args.portal)
+            expect("mac_spoofed_for_leased_ip", reachable != enforced, mode=mac_mode, reachable=reachable)
+            try_run(*nsx, "ip", "link", "set", "dev", qinq_if, "address", original)
+            expect("mac_restored_forwarded", wait_forwarded(nsx, args.portal, 10) is not None)
 
         # Blocked in every phase (protected or never-allowed)
         expect("management_lan_blocked", not ping(nsx, args.management_probe))
@@ -168,9 +200,15 @@ def main() -> int:
     except subprocess.CalledProcessError as exc:
         expect("harness", False, error=f"{exc.cmd}: {exc.stderr}")
     finally:
+        if activated_ip:
+            try:
+                from tests.lab.controller_client import deactivate
+                deactivate(activated_ip)
+            except Exception as exc:  # report, but always clean up the namespace
+                expect("deactivation", False, error=f"{type(exc).__name__}: {exc}")
         cleanup(ns, host_if)
 
-    report = {"phase": args.phase, "checks": checks, "ok": all(c["ok"] for c in checks.values())}
+    report = {"phase": args.phase, "mac_enforcement": mac_mode, "checks": checks, "ok": all(c["ok"] for c in checks.values())}
     print(json.dumps(report, indent=2))
     return 0 if report["ok"] else 1
 

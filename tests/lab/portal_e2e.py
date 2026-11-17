@@ -24,7 +24,7 @@ import time
 import urllib.parse
 from pathlib import Path
 
-from controller.dhcp_qualification import cleanup, setup_namespace, try_run
+from controller.dhcp_qualification import cleanup, setup_namespace, try_run, wait_forwarded
 
 
 def ping_once(nsx, target: str) -> bool:
@@ -123,6 +123,8 @@ def main() -> int:
         if not expect("dhcp_lease", address, address=address, mac=mac):
             raise RuntimeError("no DHCP lease")
 
+        # MAC enforcement (ADR-016): the lease is forwarded once the controller programmed it.
+        expect("forwarded_after_lease", (first := wait_forwarded(nsx, args.portal, 10)) is not None, seconds=first)
         expect("preauth_target_blocked", not ping_once(nsx, args.authorized_target))
 
         portal = PortalClient(nsx, args.portal_host, args.portal, work / "cookies", args.insecure)

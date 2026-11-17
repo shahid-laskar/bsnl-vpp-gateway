@@ -35,6 +35,9 @@ check_once() {
   t "nft HTTP redirect to :8080" sh -c "nft list chain ip bsnl_vpp_portal prerouting | grep -q 'redirect to :8080'"
   t "redirector answers 302 to the portal" sh -c "curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 3 http://198.51.100.2:8080/ | grep -qx '302 https://wifi.bsnl.co.in/portal/login/'"
   t "vpp ABF policy attached on host-vpp-access.101" sh -c "vppctl show abf attach host-vpp-access.101 | grep -q abf-interface-attach"
+  if grep -q '"mac_enforcement": "enforce"' /opt/bsnl-vpp-gateway/config/lab/desired-state.json 2>/dev/null; then
+    t "vpp MAC/IP classifier (ADR-016) on host-vpp-access.101" sh -c "vppctl show inacl type ip4 | grep -q host-vpp-access.101"
+  fi
   t "kea config readable by _kea" runuser -u _kea -- test -r /etc/kea/kea-dhcp4.conf
   t "kea config valid" kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
   if [ "$resolver" = unbound ]; then

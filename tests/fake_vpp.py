@@ -149,7 +149,106 @@ class FakeAbfMixin:
         return None
 
 
-class FakeVppApi(FakeAclMixin, FakeAbfMixin):
+class FakeClassifyMixin:
+    """Classifier tables + ip4 input ACL; ``mac_permits`` walks the chain over a
+    synthetic double-tagged frame, keyed relative to the IPv4 header like VPP
+    does with current_data_flag 1."""
+
+    NONE = 0xFFFFFFFF
+
+    def _cls_init(self):
+        if not hasattr(self, "cls_tables"):
+            self.cls_tables: dict[int, dict] = {}
+            self.inacl_ip4: dict[int, int] = {}
+            self._next_cls = 0
+
+    def classify_add_del_table(self, is_add, del_chain, table_index, nbuckets, memory_size, skip_n_vectors, match_n_vectors,
+                               next_table_index, miss_next_index, current_data_flag, current_data_offset, mask_len, mask):
+        self._cls_init()
+        self.calls.append("classify_add_del_table")
+        if is_add:
+            if len(mask) != mask_len or mask_len != (skip_n_vectors + match_n_vectors) * 16:
+                return SimpleNamespace(retval=-1, new_table_index=self.NONE)
+            index, self._next_cls = self._next_cls, self._next_cls + 1
+            self.cls_tables[index] = {"mask": bytes(mask), "vectors": match_n_vectors, "next": next_table_index,
+                                      "miss": miss_next_index, "flag": current_data_flag, "offset": current_data_offset, "sessions": {}}
+            return SimpleNamespace(retval=0, new_table_index=index, skip_n_vectors=skip_n_vectors, match_n_vectors=match_n_vectors)
+        if table_index not in self.cls_tables or table_index in self.inacl_ip4.values():
+            return SimpleNamespace(retval=-142, new_table_index=self.NONE)
+        while table_index != self.NONE and table_index in self.cls_tables:
+            nxt = self.cls_tables.pop(table_index)["next"]
+            table_index = nxt if del_chain else self.NONE
+        return SimpleNamespace(retval=0, new_table_index=self.NONE)
+
+    def classify_add_del_session(self, is_add, table_index, hit_next_index, opaque_index, advance, action, metadata, match_len, match):
+        self._cls_init()
+        self.calls.append("classify_add_del_session")
+        table = self.cls_tables.get(table_index)
+        if table is None or match_len != len(match) or match_len < table["vectors"] * 16:
+            return SimpleNamespace(retval=-1)
+        key = bytes(a & b for a, b in zip(match, table["mask"]))
+        if is_add:
+            table["sessions"][key] = hit_next_index
+        elif table["sessions"].pop(key, None) is None:
+            return SimpleNamespace(retval=-6)
+        return SimpleNamespace(retval=0)
+
+    def classify_table_by_interface(self, sw_if_index):
+        self._cls_init()
+        self.calls.append("classify_table_by_interface")
+        return SimpleNamespace(retval=0, sw_if_index=sw_if_index, l2_table_id=self.NONE,
+                               ip4_table_id=self.inacl_ip4.get(sw_if_index, self.NONE), ip6_table_id=self.NONE)
+
+    def classify_table_info(self, table_id):
+        self._cls_init()
+        self.calls.append("classify_table_info")
+        t = self.cls_tables[table_id]
+        return SimpleNamespace(retval=0, table_id=table_id, nbuckets=32, match_n_vectors=t["vectors"], skip_n_vectors=0,
+                               active_sessions=len(t["sessions"]), next_table_index=t["next"], miss_next_index=t["miss"],
+                               mask_length=len(t["mask"]), mask=t["mask"])
+
+    def classify_session_dump(self, table_id):
+        self._cls_init()
+        self.calls.append("classify_session_dump")
+        return [SimpleNamespace(table_id=table_id, hit_next_index=h, advance=0, opaque_index=self.NONE, match_length=len(k), match=k)
+                for k, h in self.cls_tables[table_id]["sessions"].items()]
+
+    def input_acl_set_interface(self, sw_if_index, ip4_table_index, ip6_table_index, l2_table_index, is_add):
+        self._cls_init()
+        self.calls.append("input_acl_set_interface")
+        if is_add:
+            if ip4_table_index not in self.cls_tables:
+                return SimpleNamespace(retval=-1)
+            self.inacl_ip4[sw_if_index] = ip4_table_index
+        elif self.inacl_ip4.get(sw_if_index) == ip4_table_index:
+            del self.inacl_ip4[sw_if_index]
+        else:
+            return SimpleNamespace(retval=-6)
+        return SimpleNamespace(retval=0)
+
+    def mac_permits(self, sw_if_index, mac, src_ip, outer=200, inner=101):
+        """Would ip4-inacl let this (source MAC, source IPv4) through?"""
+        self._cls_init()
+        l2 = bytes.fromhex(mac.replace(":", "")) + bytes([0x81, 0, outer >> 8, outer & 255, 0x81, 0, inner >> 8, inner & 255, 8, 0])
+        ip = bytes([0x45, 0, 0, 84, 0, 0, 0x40, 0, 64, 1, 0, 0]) + ipaddress.IPv4Address(src_ip).packed + bytes([10, 44, 0, 209])
+        frame, ip_start = b"\x00" * 6 + l2 + ip + b"\x00" * 64, 22   # dst MAC, src MAC + tags + ethertype, IPv4
+        table_index = self.inacl_ip4.get(sw_if_index, self.NONE)
+        if table_index == self.NONE:
+            return True
+        while True:
+            t = self.cls_tables[table_index]
+            start = (ip_start if t["flag"] else 0) + t["offset"]
+            region = frame[start:start + t["vectors"] * 16]
+            key = bytes(a & b for a, b in zip(region, t["mask"]))
+            if key in t["sessions"]:
+                return t["sessions"][key] == self.NONE
+            if t["next"] != self.NONE:
+                table_index = t["next"]
+                continue
+            return t["miss"] == self.NONE
+
+
+class FakeVppApi(FakeAclMixin, FakeAbfMixin, FakeClassifyMixin):
     def __init__(self) -> None:
         self.interfaces: dict[int, dict] = {}
         self.addresses: dict[int, set[str]] = {}

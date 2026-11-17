@@ -250,7 +250,8 @@ class VppPolicyEnforcer:
     """
 
     MUTATING = frozenset({"acl_add_replace", "acl_interface_set_acl_list", "acl_del",
-                          "abf_policy_add_del", "abf_itf_attach_add_del"})
+                          "abf_policy_add_del", "abf_itf_attach_add_del",
+                          "classify_add_del_table", "classify_add_del_session", "input_acl_set_interface"})
     NEW_ACL = 0xFFFFFFFF
 
     def __init__(self, api: Any, enable_writes: bool = False) -> None:
@@ -258,9 +259,14 @@ class VppPolicyEnforcer:
         self.enable_writes = enable_writes
         self.writes: list[str] = []
         self.applied: dict[str, set[str]] = {}
+        self.mac_enforced: dict[str, set[str] | None] = {}
 
-    def apply(self, state: dict[str, Any], interface_index: dict[str, int]) -> dict[str, set[str]]:
+    def apply(self, state: dict[str, Any], interface_index: dict[str, int],
+              bindings: list[dict[str, Any]] | None = None) -> dict[str, set[str]]:
+        """``bindings``: open lease bindings (MAC enforcement); None = no lease source."""
+        from .mac_enforcement import MacEnforcer
         self.writes = []
+        self.mac_enforced = {}
         if not self.enable_writes:
             raise RuntimeError("VPP writes are disabled")
         existing = {_text(a.tag): a for a in self._call("acl_dump", acl_index=self.NEW_ACL)
@@ -295,6 +301,9 @@ class VppPolicyEnforcer:
             bound = next(iter(self._call("acl_interface_list_dump", sw_if_index=index)), None)
             if bound is None or int(bound.n_input) != 1 or [int(a) for a in bound.acls] != [acl_index]:
                 self._write("acl_interface_set_acl_list", sw_if_index=index, count=1, n_input=1, acls=[acl_index])
+            # MAC/IP source check from lease bindings (ADR-016), after the ACL so
+            # a permit is in place before traffic of a new binding is allowed.
+            self.mac_enforced[tenant["tenant_key"]] = MacEnforcer(self._call, self._write).apply(tenant, index, bindings)
             authorized = authorized_addresses(rules)
             applied[tenant["tenant_key"]] = authorized if exempt is None else authorized & exempt
         # Unwanted objects go after every tenant ACL is rewritten (an HTTP

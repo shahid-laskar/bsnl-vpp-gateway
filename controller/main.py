@@ -73,6 +73,9 @@ def main() -> int:
     desired = merge_topology(store, load_json(args.desired_state), lifecycle)
     expired = lifecycle.expire()
     adapter = build_adapter(args)
+    if args.kea_lease_file and hasattr(adapter, "bindings_provider"):
+        from .bindings import open_bindings
+        adapter.bindings_provider = lambda: open_bindings(store)  # MAC enforcement (ADR-016)
     try:
         result = reconcile(adapter, store.read() or desired)
     except RuntimeError as exc:
@@ -101,7 +104,8 @@ def main() -> int:
         if args.kea_lease_file:
             from .bindings import LeaseWatcher
             from .leases import KeaMemfileLeaseSource
-            LeaseWatcher(store, KeaMemfileLeaseSource(args.kea_lease_file), args.lease_poll_interval).start()
+            LeaseWatcher(store, KeaMemfileLeaseSource(args.kea_lease_file), args.lease_poll_interval,
+                         on_change=lambda _result: reconciler.run_once()).start()
         serve(args.listen, args.port, args.store, args.audit, args.tls_cert, args.tls_key, args.tls_ca, adapter=adapter, lifecycle=lifecycle, dns_views=dns_views)
     return 0
 

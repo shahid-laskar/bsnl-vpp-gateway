@@ -69,6 +69,10 @@ class VppApiAdapter:
         self.last_apply_writes: list[str] = []
         self.policy_applied: dict[str, set[str]] | None = None
         self.policy_error: str | None = None
+        # Open lease bindings for MAC enforcement (ADR-016); set by main when a
+        # lease source is configured. None: tenants in "enforce" are refused.
+        self.bindings_provider: Callable[[], list[dict[str, Any]]] | None = None
+        self.mac_enforced: dict[str, set[str] | None] = {}
         # Restart recovery: every successful connect bumps connect_count (the
         # reconciler's watch loop re-applies on a change) and opens a settle
         # window in which writes wait for VPP's own startup config.
@@ -186,7 +190,8 @@ class VppApiAdapter:
             "api_crc_snapshot": self.snapshot.get("vpp_release"),
             "api_crc_ok": self.crc_ok,
             "writes_enabled": bool(self.enable_writes and usable),
-            "managed_objects": ["qinq_subinterface", "address", "vrf", "tenant_acl"],
+            "managed_objects": ["qinq_subinterface", "address", "vrf", "tenant_acl", "http_redirect_abf", "mac_ip_classifier"],
+            "mac_enforcement": {tenant: ("enforce" if ips is not None else "log_only") for tenant, ips in self.mac_enforced.items()},
             # True only while the last policy apply succeeded against this VPP.
             "subscriber_policy_enforced": bool(self.enable_writes and usable and self.policy_applied is not None and self.policy_error is None),
             "intra_tenant_policy_enforced": bool(self.enable_writes and usable and self.policy_applied is not None),
@@ -239,7 +244,9 @@ class VppApiAdapter:
             if any(tenant_policy(desired_state, t) for t in desired_state.get("tenants", [])):
                 enforcer = VppPolicyEnforcer(self.client.api, enable_writes=True)
                 try:
-                    self.policy_applied = enforcer.apply(desired_state, provisioner.indexes)
+                    bindings = self.bindings_provider() if self.bindings_provider is not None else None
+                    self.policy_applied = enforcer.apply(desired_state, provisioner.indexes, bindings)
+                    self.mac_enforced = dict(enforcer.mac_enforced)
                     self.policy_error = None
                 except Exception as exc:
                     self.policy_error = f"{type(exc).__name__}: {exc}"

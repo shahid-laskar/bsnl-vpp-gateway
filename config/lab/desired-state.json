@@ -20,7 +20,7 @@
       ],
       "nat_pool_ref": null,
       "pre_auth_policy_ref": "lab-preauth-v1",
-      "mac_enforcement": "log_only",
+      "mac_enforcement": "enforce",
       "admin_state": "enabled",
       "kea_subnet_id": 101,
       "parent_interface": "host-vpp-access"

@@ -76,6 +76,12 @@ def open_binding(txn: StoreTransaction, tenant_key: str, private_ipv4: str) -> d
     return rows[0] if rows else None
 
 
+def open_bindings(store: DesiredStateStore) -> list[dict[str, Any]]:
+    """Every open binding (valid_to IS NULL): input of MAC enforcement (ADR-016)."""
+    with store.transaction() as txn:
+        return _rows(txn, "SELECT tenant_key, private_ipv4, mac, valid_to FROM bindings WHERE valid_to IS NULL")
+
+
 def binding_at(store: DesiredStateStore, tenant_key: str, private_ipv4: str, at: int) -> dict[str, Any] | None:
     """The binding valid at epoch ``at`` (valid_from <= at < valid_to), if any."""
     with store.transaction() as txn:
@@ -184,8 +190,12 @@ class LeaseWatcher:
     error, not on every tick.
     """
 
-    def __init__(self, store: DesiredStateStore, source: Any, interval_seconds: float = 1.0) -> None:
+    def __init__(self, store: DesiredStateStore, source: Any, interval_seconds: float = 1.0,
+                 on_change: Any = None) -> None:
         self.store, self.source, self.interval = store, source, interval_seconds
+        # Called (in this thread) when a binding opened or closed, so MAC
+        # enforcement follows leases within one poll instead of a reconcile tick.
+        self.on_change = on_change
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.last_error: str | None = None
@@ -211,6 +221,11 @@ class LeaseWatcher:
         self.last_error, self.last_result = None, result
         if result.opened or result.closed:
             LOG.info("lease sync: %s", result.summary())
+            if self.on_change is not None:
+                try:
+                    self.on_change(result)
+                except Exception:  # the reconciler retries on its next tick
+                    LOG.exception("binding change hook failed")
         return result
 
     def start(self) -> None:

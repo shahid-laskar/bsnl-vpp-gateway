@@ -22,7 +22,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from controller.dhcp_qualification import cleanup, run, setup_namespace, try_run
+from controller.dhcp_qualification import cleanup, run, setup_namespace, try_run, wait_forwarded
 from tests.lab.controller_client import post
 
 TENANT = "lab-vpp-01/host-vpp-access/0x8100/200/101"
@@ -49,7 +49,7 @@ def ping(nsx: tuple[str, ...], target: str) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--runs", type=int, default=3)
-    parser.add_argument("--ip", default="10.9.101.50", help="static subscriber address for the test namespace")
+    parser.add_argument("--ip", default=None, help="static subscriber address (log_only tenants only); default: DHCP lease")
     parser.add_argument("--target", default="192.0.2.1", help="authorized-only destination")
     parser.add_argument("--api-host", default="10.44.0.207")
     parser.add_argument("--api-port", type=int, default=8787)
@@ -57,7 +57,6 @@ def main() -> int:
     args = parser.parse_args()
 
     ns, host_if = "bsnl-rr", "bsnlrr-host0"
-    session_key = f"{TENANT}/{args.ip}"
     session_id = f"restart-test-{uuid.uuid4().hex[:12]}"
     report: dict[str, object] = {"ip": args.ip, "target": args.target, "runs": []}
     cleanup(ns, host_if)
@@ -65,8 +64,17 @@ def main() -> int:
     try:
         nsx = setup_namespace(ns, host_if, "br-access", 200, 101)
         qinq_if = "eth0.200.101"
-        run(*nsx, "ip", "addr", "add", f"{args.ip}/24", "dev", qinq_if)
-        run(*nsx, "ip", "route", "add", "default", "via", "10.9.101.1")
+        if args.ip:
+            run(*nsx, "ip", "addr", "add", f"{args.ip}/24", "dev", qinq_if)
+            run(*nsx, "ip", "route", "add", "default", "via", "10.9.101.1")
+        else:
+            try_run(*nsx, "dhclient", "-1", "-pf", f"/run/{ns}.pid", "-lf", f"/run/{ns}.leases", qinq_if, timeout=40)
+            fields = try_run(*nsx, "ip", "-4", "-o", "addr", "show", "dev", qinq_if).stdout.split()
+            args.ip = next(f.split("/")[0] for f in fields if "/" in f and f.startswith("10."))
+            report["ip"] = args.ip
+        # MAC enforcement (ADR-016): wait until the lease is programmed.
+        report["forwarded_after_address_s"] = wait_forwarded(nsx, "10.44.0.209", 10)
+        session_key = f"{TENANT}/{args.ip}"
         report["preauth_blocked"] = not ping(nsx, args.target)
 
         expiry = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()

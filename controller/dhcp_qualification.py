@@ -70,6 +70,29 @@ def cleanup(ns: str, host_if: str) -> None:
     try_run("ip", "link", "del", host_if)
 
 
+def wait_forwarded(nsx: tuple[str, ...], target: str, timeout: float = 10.0, source: str | None = None) -> float | None:
+    """Seconds until ``target`` answers an ICMP echo from the namespace (None on
+    timeout). With MAC enforcement (ADR-016) a new lease is forwarded only once
+    the controller has seen it and programmed VPP; tests wait for that."""
+    start = time.monotonic()
+    while time.monotonic() - start < timeout:
+        args = ["ping", "-n", "-c", "1", "-W", "1"] + (["-I", source] if source else []) + [target]
+        if try_run(*nsx, *args, timeout=5).returncode == 0:
+            return round(time.monotonic() - start, 2)
+        time.sleep(0.1)
+    return None
+
+
+def lab_mac_mode(outer_vlan: int, inner_vlan: int, desired_state: str = "config/lab/desired-state.json") -> str:
+    """mac_enforcement of the lab tenant on (outer, inner) VLAN, from desired state."""
+    with open(desired_state, encoding="utf-8") as handle:
+        state = json.load(handle)
+    for tenant in state.get("tenants", []):
+        if (tenant.get("outer_vlan"), tenant.get("inner_vlan")) == (outer_vlan, inner_vlan):
+            return tenant.get("mac_enforcement", "log_only")
+    return "log_only"
+
+
 def setup_namespace(ns: str, host_if: str, bridge: str, outer_vlan: int, inner_vlan: int, client_if: str = "eth0") -> tuple[str, ...]:
     """Throw-away subscriber: veth into ``bridge`` with a QinQ interface
     ``eth0.<outer>.<inner>`` inside netns ``ns``. Returns the netns exec prefix."""

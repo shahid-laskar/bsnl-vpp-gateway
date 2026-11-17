@@ -15,6 +15,8 @@ from tests.test_vpp_reconnect import BrokenPipeApi
 REPO = Path(__file__).resolve().parent.parent
 SNAPSHOT = REPO / "artifacts" / "api-crc-26.10.json"
 LAB = json.loads((REPO / "config" / "lab" / "desired-state.json").read_text())
+# ACL/ABF/restart behaviour only; MAC enforcement (lab: "enforce") is covered by test_phase6_mac.py.
+LAB["tenants"][0]["mac_enforcement"] = "log_only"
 TENANT = LAB["tenants"][0]["tenant_key"]
 MUTATING = {"create_subif", "acl_add_replace", "acl_interface_set_acl_list", "acl_del", "sw_interface_add_del_address"}
 
