@@ -11,7 +11,7 @@ hypervisor bridge -> ens18 -> management / SSH only
 ```
 
 Tenant fixture: exact-match QinQ outer `0x8100`/200, inner `0x8100`/101,
-`10.9.101.0/24`, gateway `10.9.101.1`, pool `10.9.101.5-105`, VRF 0 (ADR-011).
+`10.9.101.0/24`, gateway `10.9.101.1`, pool `10.9.101.5-105`, captive VRF 101 with SVS to table 0 (ADR-011, ADR-017).
 
 ## What runs where
 
@@ -77,6 +77,7 @@ address). Do not widen `authenticated_destinations` before NAT and IPDR (P7).
 systemctl is-active vpp bsnl-vpp-lab-links bsnl-vpp-portal-path bsnl-vpp-redirector isc-kea-dhcp4-server unbound bsnl-vpp-controller
 sudo vppctl show abf policy; sudo vppctl show abf attach host-vpp-access.101
 sudo vppctl show inacl type ip4; sudo vppctl show classify tables   # MAC/IP chain (ADR-016)
+sudo vppctl show svs; sudo vppctl show ip fib table 1101; sudo vppctl show ip fib table 101   # SVS (ADR-017)
 sudo vppctl show interface address
 sudo vppctl show acl-plugin acl
 sudo vppctl show acl-plugin interface

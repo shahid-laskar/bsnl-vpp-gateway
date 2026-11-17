@@ -53,12 +53,15 @@ documented `0x8100` lab fixture unless explicitly re-qualifying it.
   subscribers get normal recursion. dnsmasq is disabled (rollback only).
 - VPP route to 10.44.0.0/22; Linux forwarding and scoped SNAT allow
   subscribers to reach the existing portal without a portal-host return route.
-- Subscriber policy on host-vpp-access.101 is the controller-owned tagged ACL
-  `bsnl:acl/<tenant>` (writes on since 2026-11-16): pre-auth allowlist (DHCP,
-  DNS to 198.51.100.2, portal HTTP/HTTPS/ICMP), protected prefixes, one permit
-  per authenticated /32 to the lab target 192.0.2.0/24, deny-all. The static
-  ACL 0 from `bsnl-lab.cli` is only in force between a VPP start and the
-  controller's re-apply (seconds) or when writes are off.
+- Subscriber authorization (since 2026-11-17, ADR-017, D-09 = SVS):
+  host-vpp-access.101 is in captive VRF 101 (routes: portal, resolver,
+  default -> gateway host for the HTTP redirect); the controller owns SVS
+  table 1101 on it with one `/32 -> table 0` entry per authenticated
+  subscriber, and a static tagged ACL `bsnl:acl/<tenant>` (pre-auth
+  allowlist, protected prefixes, intra-tenant deny, subnet -> 192.0.2.0/24,
+  subnet tcp/80, deny-all). The static ACL 0 from `bsnl-lab.cli` is only in
+  force between a VPP start and the controller's re-apply. The earlier ACL
+  candidate (per-subscriber permits + ABF) is policy `authorization: "acl"`.
 - Subscriber lifecycle control plane supports authenticated activation,
   deactivation, expiry, tenant validation, durable idempotency, conflict
   detection, and audit events.
@@ -135,11 +138,12 @@ sudo unbound-checkconf
   subscribers are back in 3.8–5.0 s (lab, 2026-11-17).
   `subscriber_policy_enforced` is true only while the last policy apply
   against the current VPP connection succeeded.
-- Decision (lab, until D-06): tenants use VRF 0 (shared FIB). The live
-  sub-interface and the portal route are in table 0; the earlier desired state
-  said VRF 101, which would have isolated subscribers from the portal once
-  writes were enabled. Kea subnet id 101 is pinned (`kea_subnet_id`) to keep
-  the existing lease file valid.
+- VRFs (ADR-011 as updated 2026-11-17): tenant in captive VRF 101, internet
+  VRF = table 0 (WAN, portal route, 192.0.2.0/24). The captive routes and the
+  table-0 return routes are in `bsnl-lab.cli`; captive routes must use
+  attached paths (`via 198.51.100.2 host-vpp-wan`) and the return route must
+  be attached (`via host-vpp-access.101`), see ADR-017. Kea subnet id 101 is
+  pinned (`kea_subnet_id`).
 
 ## Subscriber policy (remediation step 5)
 
@@ -169,8 +173,21 @@ sudo unbound-checkconf
 - Lab exception (S-2): subscriber->portal traffic is SNATed out of the
   management NIC `ens18` by `bsnl-vpp-portal-path`. Acceptable only in this VM
   lab; production must reach the portal via the WAN/service network.
-- Not in this step: SVS (candidate A) comparison for D-09. HTTP redirect and
-  MAC enforcement: see below.
+- D-09 decided 2026-11-17: SVS (ADR-010 measurement, ADR-017). HTTP redirect
+  and MAC enforcement: see below.
+
+## SVS authorization (D-09, ADR-017, 2026-11-17)
+
+- Login/logout = one `svs_route_add_del` (fast path); full applies converge
+  from `ip_route_dump` of table 1101. API round trip ~72 ms p50 (TLS +
+  Unbound reload); VPP part ~1 ms.
+- Checks: `sudo vppctl show svs`, `sudo vppctl show ip fib table 1101`,
+  `sudo vppctl show ip fib table 101`.
+- `svs_plugin.so` must be enabled in `startup.conf.lab`; without it the
+  controller refuses to start (CRC check, fail closed).
+- In SVS mode the HTTP redirect is the captive VRF default route (no ABF);
+  everything else pre-auth reaches the host and is dropped by nftables
+  (forward drop + input chain).
 
 ## HTTP redirect (Phase 6, ADR-015, 2026-11-17)
 
@@ -274,11 +291,10 @@ sudo unbound-checkconf
    route; the lab reuses the CN `bsnl-vpp-portal-client` certificate issued
    2026-11-11 by the lab CA (expires 2027-11-11).
 2. **Phase 6 remainder:** HTTP redirect (ADR-015) and MAC/IP enforcement
-   (ADR-016) DONE 2026-11-17. D-09 MEASURED 2026-11-17: the deployed ACL
-   candidate fails churn beyond ~1k subscribers; SVS recommended (ADR-010
-   proposal, awaiting approval; bench: `tools/d09/`). Left: ARP protection
+   (ADR-016) DONE 2026-11-17. D-09 DONE 2026-11-17: SVS adopted and live
+   (ADR-017; measurement ADR-010, bench `tools/d09/`). Left: ARP protection
    (static neighbours from bindings), portal MACSecurityPolicy -> tenant mode
-   sync, SVS migration if approved, Unbound reload batching at churn (ADR-014 limits), captive detection on
+   sync, Unbound reload batching (now the dominant per-login cost) at churn (ADR-014 limits), captive detection on
    real Android/iOS/Windows clients.
 3. **Phase 5 leftovers:** VPP neighbour table as secondary MAC source; D-19
    resolver scale measurement.

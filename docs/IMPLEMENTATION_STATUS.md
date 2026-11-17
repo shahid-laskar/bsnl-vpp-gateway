@@ -36,6 +36,8 @@ Evidence lives in `artifacts/` (this repo) and
   (`artifacts/test-reports/2026-11-17-restart-policy-recovery.txt`).
 - Pre-auth HTTP redirect (ADR-015, 2026-11-17): ABF policy on the tenant
   sub-interface + `bsnl-vpp-redirector` on 198.51.100.2:8080.
+- Authorization (ADR-017, 2026-11-17): SVS; tenant in captive VRF 101,
+  SVS table 1101, static tenant ACL; ABF unused in this mode.
 - MAC/IP enforcement (ADR-016, 2026-11-17): lab tenant `mac_enforcement:
   enforce`; classifier chain on host-vpp-access.101 follows lease bindings.
 - Resolver: Unbound 1.19.2 split-horizon views (ADR-014); dnsmasq disabled,
@@ -53,7 +55,8 @@ Evidence lives in `artifacts/` (this repo) and
   `/root/bsnl-unbound-install-20261116T113548.tgz`,
   `/root/bsnl-vpp-controller.service.pre-writes`,
   `/root/bsnl-lab.cli.pre-hwaddr`, `/root/portal-path.nft.pre-nosnat-20261117`,
-  `/root/bsnl-p6-redirect-20261117T062602.tgz`.
+  `/root/bsnl-p6-redirect-20261117T062602.tgz`, `/root/bsnl-d09-svs-20261117T083051.tgz`,
+  `/root/startup.conf.pre-svs-*` (rollback to ACL mode: ADR-017).
 
 ## Branches
 
@@ -116,7 +119,7 @@ Everything is on gateway `main` and portal `vpp-setup`, both pushed to
 | Exact-match QinQ, negative tag cases | VERIFIED (2026-11-11) | ADR-004; manual namespace tests |
 | 0x88a8 outer TPID | OPEN | ADR-004: failed on af_packet; re-test on hardware |
 | Controller-owned sub-interfaces (adopt, repair, tag, orphan cleanup) | TESTED | `controller/interfaces.py`, `test_step4.py` |
-| Routing model | DECIDED (lab) | ADR-011: shared FIB (VRF 0) until D-06 |
+| Routing model | DECIDED (lab) | ADR-011 (updated 2026-11-17): tenant in captive VRF 101, internet VRF 0 (ADR-017); D-06 (VRF per tenant vs shared) still open for production |
 | 1 000 tenant create/delete without leaks | OPEN | |
 
 ### P5 — DHCP / DNS
@@ -143,7 +146,7 @@ Everything is on gateway `main` and portal `vpp-setup`, both pushed to
 | RFC 8908 Captive Portal API | TESTED | portal `GET /portal/captive-api/`; live after django restart |
 | HTTP redirector + ABF for tcp/80 | VERIFIED (2026-11-17) | ADR-015: tenant ACL permits tenant tcp/80 after the protected denies; controller-owned ABF policy (`bsnl:abf/<tenant>`, CRC-pinned) steers it to 198.51.100.2, nft redirects to `bsnl-vpp-redirector` (302 to the portal login). Bypass suite 17/17 in both phases (HTTP to any host -> 302; authorized subscriber's HTTP to its destinations not redirected; management LAN HTTP blocked), portal E2E 8/8, 3 VPP restarts recover in 4.95 s with ABF re-created; `artifacts/test-reports/2026-11-17-p6-http-redirect.txt` |
 | MAC/IP source enforcement | VERIFIED (2026-11-17) | ADR-016: controller-owned classifier chain (ip4-inacl) from open lease bindings; lab tenant `enforce`. MACIP ACLs dropped all IPv4 on the 0x8100/0x8100 sub-interface (works untagged), so not used. Unleased in-subnet source and spoofed MAC for a leased IP dropped in both phases; lease -> first forwarded packet 1.11-1.12 s; survives VPP restarts; `artifacts/test-reports/2026-11-17-p6-mac-enforcement.txt`. ARP not filtered (follow-up) |
-| D-09 mechanism | MEASURED (2026-11-17), decision pending | ADR-010: B (deployed) per-login cost 0.18 s at 1k, 3.2 s at 10k subscribers, max 4.3 / 0.3 activations/s; A (SVS) 0.4-0.8 ms flat to 10k, 50/s sustained, R-11 fall-through verified on a bench VPP. Recommendation: migrate to A (proposal in ADR-010). `artifacts/test-reports/2026-11-17-d09-acl-vs-svs.json` |
+| D-09 mechanism | DECIDED: SVS (2026-11-17) | ADR-010: B (deployed) per-login cost 0.18 s at 1k, 3.2 s at 10k subscribers, max 4.3 / 0.3 activations/s; A (SVS) 0.4-0.8 ms flat to 10k, 50/s sustained, R-11 fall-through verified on a bench VPP. Adopted (ADR-017) and verified in the lab: DHCP 6/6, bypass 21/21 + 22/22, portal E2E 9/9, restarts 3.75-4.95 s, API activate 72 ms p50. `artifacts/test-reports/2026-11-17-d09-acl-vs-svs.json`, `2026-11-17-d09-svs-lab.txt` |
 
 ### P7–P12
 

@@ -1,0 +1,83 @@
+# D-09 candidate A (SVS, ADR-017) - lab verification 2026-11-17T08:40:19Z
+# gateway main d5572c6 Fix captive VRF and return routes for SVS; tenant authorization=svs, captive VRF 101, internet VRF 0, mac_enforcement=enforce
+
+## VPP
+Source VRF select interface to fib-index mappings:
+ ipv4
+  host-vpp-access.101 -> 2
+ ipv6
+0.0.0.0/0
+0.0.0.0/32
+10.9.101.0/32
+10.9.101.0/24
+10.9.101.1/32
+10.9.101.64/32
+10.9.101.255/32
+10.44.0.209/32
+198.51.100.2/32
+224.0.0.0/4
+240.0.0.0/4
+255.255.255.255/32
+    RX FIB       Src Address  Servers FIB,Address
+      101       198.51.100.1  0,198.51.100.2  
+
+## dhcp_qualification (DHCP relay from captive VRF 101)
+ok {'capture_ready': True, 'dhcp_lease': True, 'dhcp_option_114': True, 'dns': True, 'portal_http': True, 'preauth_deny': True}
+
+## bypass suite, pre-auth
+ok 21 checks authorization: svs mac: enforce failed: []
+   forwarded_after_address {'seconds': 1.11}
+   http_redirected_to_portal {'result': '302', 'location': 'https://wifi.bsnl.co.in/portal/login/'}
+   http_authorized_target_redirected_preauth {'result': '302'}
+   http_management_lan_blocked {'result': 'timeout'}
+   mac_unleased_source {'mode': 'enforce', 'reachable': False}
+   mac_spoofed_for_leased_ip {'mode': 'enforce', 'reachable': False}
+   mac_restored_forwarded {}
+   authorized_target_icmp {'expected_reachable': False}
+
+## bypass suite, authorized (own DHCP lease, activated through the API)
+ok 22 checks authorization: svs mac: enforce failed: []
+   forwarded_after_address {'seconds': 1.11}
+   activation_enforced {'address': '10.9.101.67'}
+   http_not_redirected_when_authenticated {'result': 'timeout'}
+   http_authorized_target_not_redirected {'result': 'timeout'}
+   http_management_lan_blocked {'result': 'timeout'}
+   mac_unleased_source {'mode': 'enforce', 'reachable': False}
+   mac_spoofed_for_leased_ip {'mode': 'enforce', 'reachable': False}
+   mac_restored_forwarded {}
+   authorized_target_icmp {'expected_reachable': True}
+
+## controller API: activate/deactivate round trips (mTLS + HMAC, dataplane_enforced)
+{"api_activate": {"p50_ms": 71.7, "p95_ms": 79.8, "max_ms": 100.6}, "api_deactivate": {"p50_ms": 71.4, "p95_ms": 78.0, "max_ms": 79.5}, "n": 20}
+   writes per login: 0 fast-path fallbacks in the last 2 min
+
+## portal end to end (real login)
+ok 9 checks authorization: None mac: None failed: []
+   forwarded_after_lease {'seconds': 1.11}
+   authorized_target_reachable {'seconds_after_login': 1.38}
+
+## VPP restart recovery (3 runs, DHCP lease)
+{'ip': '10.9.101.69', 'target': '192.0.2.1', 'forwarded_after_address_s': 1.11, 'preauth_blocked': True, 'activation_enforced': True, 'authorized_before': True, 'deactivation_enforced': True, 'blocked_after_deactivation': True, 'ok': True}
+   {'run': 1, 'systemctl_restart_s': 0.12, 'static_acl_bound_s': None, 'authorized_again_s': 3.75}
+   {'run': 2, 'systemctl_restart_s': 0.11, 'static_acl_bound_s': 2.53, 'authorized_again_s': 4.95, 'controller_lag_s': 2.42}
+   {'run': 3, 'systemctl_restart_s': 0.11, 'static_acl_bound_s': 2.53, 'authorized_again_s': 4.95, 'controller_lag_s': 2.42}
+
+## after the restarts
+  host-vpp-access.101 -> 2
+ok 21 checks authorization: svs mac: enforce failed: []
+   forwarded_after_address {'seconds': 1.11}
+   http_redirected_to_portal {'result': '302', 'location': 'https://wifi.bsnl.co.in/portal/login/'}
+   http_authorized_target_redirected_preauth {'result': '302'}
+   http_management_lan_blocked {'result': 'timeout'}
+   mac_unleased_source {'mode': 'enforce', 'reachable': False}
+   mac_spoofed_for_leased_ip {'mode': 'enforce', 'reachable': False}
+   mac_restored_forwarded {}
+   authorized_target_icmp {'expected_reachable': False}
+
+## nft counters
+		iifname "br-wan" ip saddr 10.9.101.0/24 counter packets 16 bytes 1200 drop
+		iifname "br-wan" ip saddr 10.9.101.0/24 counter packets 0 bytes 0 drop
+		iifname "br-wan" ip saddr 10.9.101.0/24 ip daddr != 10.44.0.209 tcp dport 80 counter packets 4 bytes 240 redirect to :8080
+
+## bsnl-vpp-lab-check
+HEALTHY

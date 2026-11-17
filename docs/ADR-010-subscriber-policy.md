@@ -5,9 +5,8 @@
 Candidate B (this ADR) is implemented and deployed. D-09 was measured on
 2026-11-17 (section "D-09 measurement"): B does not meet the Phase 6 churn
 criteria beyond ~1k subscribers per tenant; candidate A (SVS) does at 10k.
-**Recommendation: adopt A for per-subscriber authorization** (proposal below).
-Not adopted yet: it changes the lab's routing model (ADR-011, D-06) and needs
-owner approval. C (classifier) was not measured.
+**Decision (2026-11-17): A adopted** for the lab (ADR-017); B stays available
+as `authorization: "acl"`. C (classifier) was not measured.
 
 ## Decision
 
@@ -86,7 +85,7 @@ route. No SVS entry: blocked. `/32 -> internet VRF` for .7: .7 reaches, .8
 falls through to the captive VRF (blocked). Adding/removing .8's entry
 toggles only .8.
 
-## Proposal: candidate A (not implemented)
+## Proposal: candidate A (implemented as ADR-017)
 
 - Tenant sub-interface in a per-tenant **captive VRF** whose only routes are
   the portal, the resolver and a default route to the redirector next hop
