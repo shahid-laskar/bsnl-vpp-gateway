@@ -14,6 +14,7 @@ plugins {
   plugin dpdk_plugin.so { disable }
   plugin acl_plugin.so { enable }
   plugin abf_plugin.so { enable }
+  plugin svs_plugin.so { enable }
   plugin nat_plugin.so { enable }
   plugin ping_plugin.so { enable }
   plugin af_packet_plugin.so { enable }
