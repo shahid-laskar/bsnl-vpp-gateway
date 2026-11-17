@@ -169,8 +169,25 @@ sudo unbound-checkconf
 - Lab exception (S-2): subscriber->portal traffic is SNATed out of the
   management NIC `ens18` by `bsnl-vpp-portal-path`. Acceptable only in this VM
   lab; production must reach the portal via the WAN/service network.
-- Not in this step: HTTP redirector + ABF for tcp/80, MACIP enforcement
-  (`mac_enforcement` stays `log_only`), SVS (candidate A) comparison for D-09.
+- Not in this step: MACIP enforcement (`mac_enforcement` stays `log_only`),
+  SVS (candidate A) comparison for D-09. HTTP redirect: see below.
+
+## HTTP redirect (Phase 6, ADR-015, 2026-11-17)
+
+- Policy key `http_redirect: {"next_hop": "198.51.100.2"}`. The tenant ACL
+  gets `permit <subnet> tcp/80 any` after the protected denies (VPP runs the
+  ACL before ABF), and a controller-owned ABF policy (match ACL
+  `bsnl:abf/<tenant>`) steers that HTTP to the host. ABF objects are written
+  before the permit and removed after it.
+- Host: nft prerouting in `bsnl_vpp_portal` redirects it to :8080;
+  `bsnl-vpp-redirector.service` (`controller/redirector.py`) answers a fixed
+  302 to `https://wifi.bsnl.co.in/portal/login/`. The forward chain now drops
+  any other subscriber traffic the host would forward.
+- ABF messages are in-progress API in 26.x: CRC-pinned; `vpp_papi` needs the
+  full 16-entry `label_stack` in a `fib_path` (missing it crashed the
+  controller at boot once; it fails closed).
+- Controller POSTs need HMAC since 2026-11-17: use
+  `tests/lab/controller_client.py` (activate/deactivate CLI) for lab tests.
 
 ## Lease bindings (Phase 5, P5-T4/T6)
 
@@ -241,10 +258,11 @@ sudo unbound-checkconf
    fetches it asynchronously after activation); persist the portal host
    route; the lab reuses the CN `bsnl-vpp-portal-client` certificate issued
    2026-11-11 by the lab CA (expires 2027-11-11).
-2. **Phase 6 remainder:** HTTP redirector + ABF for tcp/80 (pre-auth HTTP to
-   any host -> portal), MACIP enforcement (`mac_enforcement` is `log_only`),
-   D-09 ACL vs SVS measurement at 1k/10k subscribers, Unbound reload batching
-   at churn (ADR-014 limits).
+2. **Phase 6 remainder:** HTTP redirect DONE 2026-11-17 (ADR-015). Left:
+   MACIP enforcement (`mac_enforcement` is `log_only`), D-09 ACL vs SVS
+   measurement at 1k/10k subscribers (now two ACL replaces per login),
+   Unbound reload batching at churn (ADR-014 limits), captive detection on
+   real Android/iOS/Windows clients.
 3. **Phase 5 leftovers:** VPP neighbour table as secondary MAC source; D-19
    resolver scale measurement.
 4. **Phase 7 (NAT44-ED + IPDR)** only after D-16 (IPDR legal fields) has an

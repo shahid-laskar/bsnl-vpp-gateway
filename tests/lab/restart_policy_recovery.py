@@ -16,32 +16,21 @@ namespace removed on exit.
 from __future__ import annotations
 
 import argparse
-import http.client
 import json
-import ssl
 import subprocess
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from controller.dhcp_qualification import cleanup, run, setup_namespace, try_run
+from tests.lab.controller_client import post
 
 TENANT = "lab-vpp-01/host-vpp-access/0x8100/200/101"
-TLS = "/etc/bsnl-vpp-gateway/tls"
 
 
 def api(path: str, body: dict, host: str, port: int) -> dict:
-    context = ssl.create_default_context(cafile=f"{TLS}/ca.crt")
-    context.check_hostname = False  # lab server cert; the CA is still verified
-    context.load_cert_chain(f"{TLS}/client.crt", f"{TLS}/client.key")
-    connection = http.client.HTTPSConnection(host, port, context=context, timeout=10)
-    connection.request("POST", path, body=json.dumps(body), headers={"Content-Type": "application/json", "Idempotency-Key": body["operation_id"]})
-    response = connection.getresponse()
-    payload = json.loads(response.read() or b"{}")
-    connection.close()
-    if response.status != 200:
-        raise RuntimeError(f"{path} -> HTTP {response.status}: {payload}")
-    return payload
+    # Signed with the controller HMAC secret when one is configured (2026-11-17).
+    return post(path, body, host, port)
 
 
 def vppctl(*args: str) -> str:

@@ -19,7 +19,8 @@ Tenant fixture: exact-match QinQ outer `0x8100`/200, inner `0x8100`/101,
 |---|---|
 | `bsnl-vpp-lab-links` | Linux bridges and veths; `vpp.service` requires it |
 | `vpp` + `/etc/vpp/bsnl-lab.cli` | VPP applies af_packet, L3 fixture, QinQ, DHCP proxy and the static pre-auth ACL itself at every start (no vppctl race) |
-| `bsnl-vpp-portal-path` | Lab nftables forward/SNAT to the portal (ADR-012) |
+| `bsnl-vpp-portal-path` | Lab nftables: forward to the portal (no SNAT to .209, ADR-012), pre-auth HTTP redirect to :8080 and drop of any other forwarded subscriber traffic (ADR-015) |
+| `bsnl-vpp-redirector` | Captive HTTP redirector on 198.51.100.2:8080: 302 to the portal login for HTTP that VPP's ABF policy steers to the host (ADR-015) |
 | `isc-kea-dhcp4-server` | DHCP on `br-wan` |
 | `unbound` + `/etc/unbound/unbound.conf.d/bsnl-vpp-lab.conf` | Split-horizon DNS on 198.51.100.2 (ADR-014); per-subscriber views in `/etc/unbound/bsnl/authenticated.conf`, written by the controller. dnsmasq is disabled (rollback only) |
 | `bsnl-vpp-controller` | API on 10.44.0.207:8787 (mTLS + HMAC), store `/var/lib/bsnl-vpp-gateway/controller.sqlite3`; secrets in `/etc/bsnl-vpp-gateway/controller.env`; reads Kea leases (`SupplementaryGroups=_kea`) into the `bindings` table every second (ADR-013) |
@@ -45,7 +46,7 @@ sudo sh deployment/bin/bsnl-vpp-unbound-install --rollback # back to dnsmasq
 |---|---|---|
 | Dry-run | (none) | validates and plans; no VPP access |
 | Observe | `--observe-vpp --port-map access0=host-vpp-access` | connects read-only, checks API CRCs, reports observed state |
-| Enforce (lab default since 2026-11-16) | add `--enable-vpp-writes` | owns tenant sub-interfaces and the tenant ACL; refuses to start on CRC mismatch. Back out: remove the flag, reinstall the unit, restart the controller and then VPP (re-applies the static ACL) |
+| Enforce (lab default since 2026-11-16) | add `--enable-vpp-writes` | owns tenant sub-interfaces, the tenant ACL and (with `http_redirect`) the ABF policy; refuses to start on CRC mismatch. Back out: remove the flag, reinstall the unit, restart the controller and then VPP (re-applies the static ACL) |
 
 Check the live CRCs before enabling writes:
 
@@ -62,7 +63,10 @@ with `tools/api_crc_snapshot.py` before restarting the controller.
 ```bash
 sudo python3 -m controller.dhcp_qualification          # lease, option 114, DNS, portal HTTP, deny probe
 sudo python3 -m controller.bypass_suite                # pre-auth negatives (works with the static ACL too)
+sudo python3 -m tests.lab.controller_client activate --ip 10.9.101.50 --minutes 10   # signed (mTLS + HMAC)
 sudo python3 -m controller.bypass_suite --phase authorized --static-ip 10.9.101.50   # after activating .50
+sudo python3 -m tests.lab.controller_client deactivate --ip 10.9.101.50
+sudo python3 -m tests.lab.portal_e2e --username vpplab1 --password-file FILE        # real portal login
 ```
 
 Authenticated lab subscribers can reach only `192.0.2.0/24` (VPP's own fixture
@@ -71,7 +75,8 @@ address). Do not widen `authenticated_destinations` before NAT and IPDR (P7).
 ## Useful read-only commands
 
 ```bash
-systemctl is-active vpp bsnl-vpp-lab-links bsnl-vpp-portal-path isc-kea-dhcp4-server unbound bsnl-vpp-controller
+systemctl is-active vpp bsnl-vpp-lab-links bsnl-vpp-portal-path bsnl-vpp-redirector isc-kea-dhcp4-server unbound bsnl-vpp-controller
+sudo vppctl show abf policy; sudo vppctl show abf attach host-vpp-access.101
 sudo vppctl show interface address
 sudo vppctl show acl-plugin acl
 sudo vppctl show acl-plugin interface

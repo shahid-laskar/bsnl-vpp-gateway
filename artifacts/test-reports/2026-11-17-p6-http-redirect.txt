@@ -1,0 +1,85 @@
+# Phase 6 HTTP redirect via ABF - lab verification 2026-11-17T06:33:34Z
+# gateway main 546fde6 Send the fixed 16-entry label_stack in ABF fib paths
+
+## VPP objects
+abf:[0]: policy:1734279103 acl:1
+     path-list:[28] locks:1 flags:shared,no-uRPF, uRPF-list: None
+      path:[34] pl-index:28 ip4 weight=1 pref=0 recursive:  oper-flags:resolved,
+        via 198.51.100.2 in fib:0 via-fib:20 via-dpo:[dpo-load-balance:21]
+ipv4:
+ abf-interface-attach: policy:1734279103 priority:0
+  [@1]: dpo-load-balance: [proto:ip4 index:21 buckets:1 uRPF:29 to:[0:0]]
+    [0] [@5]: ipv4 via 198.51.100.2 host-vpp-wan: mtu:9000 next:3 flags:[] 869ee17cc42502feb50000020800
+acl-index 0 count 6 tag {cli}
+acl-index 1 count 2 tag {bsnl:abf/lab-vpp-01/host-vpp-access/0x8100/200/101}
+acl-index 2 count 13 tag {bsnl:acl/lab-vpp-01/host-vpp-access/0x8100/200/101}
+
+## bypass suite, pre-auth
+ok 17 checks failed: []
+   http_redirected_to_portal {'result': '302', 'location': 'https://wifi.bsnl.co.in/portal/login/'}
+   http_authorized_target_redirected_preauth {'result': '302'}
+   http_management_lan_blocked {'result': 'timeout'}
+
+## bypass suite, authorized (10.9.101.50 activated with the signed lab client)
+{"session_key": "lab-vpp-01/host-vpp-access/0x8100/200/101/10.9.101.50", "authorized": true, "changed": true, "dataplane_enforced": true, "gateway_revision": 47}
+ok 17 checks failed: []
+   http_redirected_to_portal {'result': '302', 'location': 'https://wifi.bsnl.co.in/portal/login/'}
+   http_authorized_target_not_redirected {'result': 'timeout'}
+   http_management_lan_blocked {'result': 'timeout'}
+{"session_key": "lab-vpp-01/host-vpp-access/0x8100/200/101/10.9.101.50", "authorized": false, "changed": true, "dataplane_enforced": true, "gateway_revision": 48}
+
+## portal end to end (real login)
+ok 8 checks failed: []
+
+## VPP restart recovery (3 runs)
+      "authorized_again_s": 4.95,
+      "controller_lag_s": 2.42
+    },
+    {
+      "run": 2,
+      "systemctl_restart_s": 0.11,
+      "static_acl_bound_s": 2.53,
+      "authorized_again_s": 4.95,
+      "controller_lag_s": 2.42
+    },
+    {
+      "run": 3,
+      "systemctl_restart_s": 0.11,
+      "static_acl_bound_s": 2.53,
+      "authorized_again_s": 4.95,
+      "controller_lag_s": 2.42
+    }
+  ],
+  "preauth_blocked": true,
+  "activation_enforced": true,
+  "authorized_before": true,
+  "deactivation_enforced": true,
+  "blocked_after_deactivation": true,
+  "ok": true
+}
+
+## after the restarts: ABF re-created, pre-auth bypass suite
+ipv4:
+ abf-interface-attach: policy:1734279103 priority:0
+ok 17 checks failed: []
+   http_redirected_to_portal {'result': '302', 'location': 'https://wifi.bsnl.co.in/portal/login/'}
+   http_authorized_target_redirected_preauth {'result': '302'}
+   http_management_lan_blocked {'result': 'timeout'}
+
+## nft counters
+		iifname "br-wan" ip saddr 10.9.101.0/24 ip daddr != 10.44.0.209 tcp dport 80 counter packets 12 bytes 720 redirect to :8080
+		iifname "br-wan" ip saddr 10.9.101.0/24 counter packets 0 bytes 0 drop
+
+## bsnl-vpp-lab-check
+HEALTHY
+
+## Notes
+- This is the second full batch. The first batch (06:28 UTC, same commands)
+  had two failures that did not recur in four later runs: portal_e2e failed
+  after the login page (Django served GET /portal/login/ 200 at 06:29:29; the
+  client-side detail was not captured), and restart_policy_recovery's single
+  ping right after activation (authorized_before) failed while all three
+  restart recoveries passed (3.2-5.0 s). A stale VPP neighbour entry was
+  ruled out: VPP re-learned 10.9.101.50 with a new MAC within 7 ms.
+- Lab tooling now signs controller POSTs (tests/lab/controller_client.py);
+  unsigned POSTs are rejected since the HMAC secret was configured.
