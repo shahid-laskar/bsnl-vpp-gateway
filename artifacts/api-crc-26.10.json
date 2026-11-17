@@ -2,6 +2,10 @@
   "vpp_release": "26.10",
   "source": "/usr/share/vpp/api",
   "messages": {
+    "abf_itf_attach_add_del": "abf_itf_attach_add_del_25c8621b",
+    "abf_itf_attach_dump": "abf_itf_attach_dump_51077d14",
+    "abf_policy_add_del": "abf_policy_add_del_c6131197",
+    "abf_policy_dump": "abf_policy_dump_51077d14",
     "acl_add_replace": "acl_add_replace_ee5c2f18",
     "acl_del": "acl_del_ef34fea4",
     "acl_dump": "acl_dump_ef34fea4",

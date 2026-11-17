@@ -19,6 +19,9 @@ MESSAGES = [
     "ip_address_dump", "sw_interface_set_flags", "sw_interface_tag_add_del",
     "ip_table_add_del_v2", "ip_table_dump",
     "acl_dump", "acl_interface_list_dump", "acl_add_replace", "acl_interface_set_acl_list", "acl_del",
+    # ABF is an in-progress API in 26.x (not under the compatibility process): pinned here,
+    # re-verified on every upgrade (plan section 3, ADR-015).
+    "abf_policy_add_del", "abf_policy_dump", "abf_itf_attach_add_del", "abf_itf_attach_dump",
 ]
 
 

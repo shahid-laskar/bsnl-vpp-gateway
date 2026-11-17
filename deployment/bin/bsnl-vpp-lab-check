@@ -16,7 +16,7 @@ check_once() {
 
   # Resolver: Unbound split DNS (ADR-014) when enabled, else the dnsmasq fixture (ADR-006).
   if systemctl is-enabled --quiet unbound 2>/dev/null; then resolver=unbound; else resolver=dnsmasq; fi
-  for u in vpp bsnl-vpp-lab-links bsnl-vpp-portal-path isc-kea-dhcp4-server "$resolver" bsnl-vpp-controller; do
+  for u in vpp bsnl-vpp-lab-links bsnl-vpp-portal-path bsnl-vpp-redirector isc-kea-dhcp4-server "$resolver" bsnl-vpp-controller; do
     t "unit $u active" systemctl is-active --quiet "$u"
   done
 
@@ -32,6 +32,9 @@ check_once() {
   t "vpp pre-auth ACL attached input on host-vpp-access.101" sh -c "vppctl show acl-plugin interface | grep -A3 \"sw_if_index \$(vppctl show interface host-vpp-access.101 | awk 'NR==2{print \$2}'):\" | grep -q 'input acl'"
 
   t "nft table ip bsnl_vpp_portal" nft list table ip bsnl_vpp_portal
+  t "nft HTTP redirect to :8080" sh -c "nft list chain ip bsnl_vpp_portal prerouting | grep -q 'redirect to :8080'"
+  t "redirector answers 302 to the portal" sh -c "curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 3 http://198.51.100.2:8080/ | grep -qx '302 https://wifi.bsnl.co.in/portal/login/'"
+  t "vpp ABF policy attached on host-vpp-access.101" sh -c "vppctl show abf attach host-vpp-access.101 | grep -q abf-interface-attach"
   t "kea config readable by _kea" runuser -u _kea -- test -r /etc/kea/kea-dhcp4.conf
   t "kea config valid" kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
   if [ "$resolver" = unbound ]; then

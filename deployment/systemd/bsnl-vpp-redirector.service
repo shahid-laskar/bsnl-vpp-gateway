@@ -1,0 +1,28 @@
+[Unit]
+Description=BSNL VPP lab captive HTTP redirector (Phase 6, ADR-015)
+After=network-online.target bsnl-vpp-lab-links.service
+Wants=network-online.target
+Requires=bsnl-vpp-lab-links.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/bsnl-vpp-gateway
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m controller.redirector --listen 198.51.100.2 --port 8080 --location https://wifi.bsnl.co.in/portal/login/
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+CapabilityBoundingSet=
+MemoryMax=128M
+TasksMax=300
+
+[Install]
+WantedBy=multi-user.target

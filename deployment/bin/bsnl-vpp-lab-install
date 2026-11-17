@@ -49,8 +49,13 @@ install -d /etc/systemd/system/vpp.service.d
 install -m 0644 "$repo/deployment/systemd/vpp.service.d/20-bsnl-lab-links.conf" /etc/systemd/system/vpp.service.d/
 install -m 0644 "$repo/deployment/systemd/bsnl-vpp-portal-path.service" /etc/systemd/system/
 install -m 0644 "$repo/deployment/systemd/bsnl-vpp-controller.service" /etc/systemd/system/
+install -m 0644 "$repo/deployment/systemd/bsnl-vpp-redirector.service" /etc/systemd/system/
+install -d /etc/bsnl-vpp
+install -m 0644 "$repo/deployment/nftables/bsnl-vpp-portal.nft" /etc/bsnl-vpp/portal-path.nft
+nft -c -f /etc/bsnl-vpp/portal-path.nft
 install -m 0755 "$repo/deployment/bin/bsnl-vpp-lab-check" /usr/local/sbin/bsnl-vpp-lab-check
 systemctl daemon-reload
+systemctl enable bsnl-vpp-redirector
 
 say "validate service configs before restart"
 kea-dhcp4 -t /etc/kea/kea-dhcp4.conf
@@ -61,7 +66,7 @@ say "restart services"
 systemctl reset-failed isc-kea-dhcp4-server "$resolver" bsnl-vpp-afpacket 2>/dev/null || true
 systemctl start bsnl-vpp-lab-links
 systemctl restart vpp
-systemctl restart isc-kea-dhcp4-server "$resolver" bsnl-vpp-portal-path bsnl-vpp-controller
+systemctl restart isc-kea-dhcp4-server "$resolver" bsnl-vpp-portal-path bsnl-vpp-redirector bsnl-vpp-controller
 
 say "verify"
 /usr/local/sbin/bsnl-vpp-lab-check --wait 30

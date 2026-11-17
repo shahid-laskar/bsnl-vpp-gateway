@@ -28,6 +28,16 @@ def tcp(nsx, address, port):
     return {28: "timeout", 7: "refused", 0: "open"}.get(result.returncode, f"curl-{result.returncode}")
 
 
+def http_redirect(nsx, address):
+    """(curl status, Location) of a plain HTTP GET; status "302" when the redirector answered."""
+    result = try_run(*nsx, "curl", "-sS", "-o", "/dev/null", "--max-time", "4", "-w", "%{http_code} %{redirect_url}",
+                     f"http://{address}/", timeout=10)
+    if result.returncode:
+        return {28: "timeout", 7: "refused"}.get(result.returncode, f"curl-{result.returncode}"), ""
+    code, _, location = result.stdout.strip().partition(" ")
+    return code, location
+
+
 def ping(nsx, address, source=None):
     args = ["ping", "-c", "2", "-W", "1"] + (["-I", source] if source else []) + [address]
     return try_run(*nsx, *args, timeout=10).returncode == 0
@@ -67,6 +77,8 @@ def main() -> int:
     parser.add_argument("--other-name", default="example.com")
     parser.add_argument("--authorized-target", default="192.0.2.1", help="lab authenticated_destinations target")
     parser.add_argument("--management-probe", default="10.44.1.234")
+    parser.add_argument("--http-probe", default="203.0.113.10", help="arbitrary HTTP destination (TEST-NET-3)")
+    parser.add_argument("--portal-login-url", default="https://wifi.bsnl.co.in/portal/login/")
     parser.add_argument("--namespace", default="bsnl-bypass")
     parser.add_argument("--host-if", default="bsnlb-host0")
     parser.add_argument("--outer-vlan", type=int, default=200)
@@ -107,6 +119,20 @@ def main() -> int:
         expect("dns_other_name", (status == "NOERROR" and bool(answers)) if authorized else status == "REFUSED",
                status=status, answers=answers, expected="resolved" if authorized else "REFUSED")
         expect("portal_https_reachable", tcp(nsx, args.portal, 443) in {"open", "refused"}, result=tcp(nsx, args.portal, 443))
+
+        # HTTP redirect (Phase 6, ADR-015): plain HTTP to any host gets a 302 to
+        # the portal, in both phases for destinations outside the subscriber's
+        # authenticated_destinations; never for the management LAN.
+        code, location = http_redirect(nsx, args.http_probe)
+        expect("http_redirected_to_portal", code == "302" and location == args.portal_login_url, result=code, location=location)
+        code, location = http_redirect(nsx, args.authorized_target)
+        if authorized:
+            # Not steered; VPP has no TCP stack, so the permitted SYN gets no answer.
+            expect("http_authorized_target_not_redirected", code != "302", result=code)
+        else:
+            expect("http_authorized_target_redirected_preauth", code == "302" and location == args.portal_login_url, result=code)
+        code, _ = http_redirect(nsx, args.management_probe)
+        expect("http_management_lan_blocked", code == "timeout", result=code)
 
         # Blocked in every phase (protected or never-allowed)
         expect("management_lan_blocked", not ping(nsx, args.management_probe))

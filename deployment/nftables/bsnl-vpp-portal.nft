@@ -3,6 +3,17 @@ table ip bsnl_vpp_portal {
     type filter hook forward priority filter; policy accept;
     iifname "br-wan" oifname "ens18" ip saddr 10.9.101.0/24 ip daddr 10.44.0.0/22 ct state new,established,related counter accept
     iifname "ens18" oifname "br-wan" ip saddr 10.44.0.0/22 ip daddr 10.9.101.0/24 ct state established,related counter accept
+    # Nothing else from subscribers is forwarded by this host. Redirected HTTP
+    # (below) is delivered locally and never reaches this chain.
+    iifname "br-wan" ip saddr 10.9.101.0/24 counter drop
+  }
+
+  # Phase 6 (ADR-015): pre-auth HTTP that the VPP ABF policy steers to
+  # 198.51.100.2 (any destination except the portal) goes to the local
+  # redirector (bsnl-vpp-redirector.service), which answers 302 to the portal.
+  chain prerouting {
+    type nat hook prerouting priority dstnat; policy accept;
+    iifname "br-wan" ip saddr 10.9.101.0/24 ip daddr != 10.44.0.209 tcp dport 80 counter redirect to :8080
   }
 
   chain postrouting {

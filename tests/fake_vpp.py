@@ -46,27 +46,106 @@ class FakeAclMixin:
         self.calls.append("acl_del")
         if any(acl_index in b for b in self.acl_bindings.values()):
             return SimpleNamespace(retval=-142)
+        if any(p["acl_index"] == acl_index for p in getattr(self, "abf_policies", {}).values()):
+            return SimpleNamespace(retval=-142)  # in use by an ABF policy
         self.acls.pop(acl_index, None)
         return SimpleNamespace(retval=0)
+
+    def _first_match(self, acl_index, src, dst, proto, dport):
+        for rule in self.acls[acl_index]["r"]:
+            if ipaddress.ip_address(src) not in ipaddress.ip_network(rule["src_prefix"]):
+                continue
+            if ipaddress.ip_address(dst) not in ipaddress.ip_network(rule["dst_prefix"]):
+                continue
+            if rule["proto"] not in (0, proto):
+                continue
+            if rule["proto"] in (6, 17) and not rule["dstport_or_icmpcode_first"] <= dport <= rule["dstport_or_icmpcode_last"]:
+                continue
+            return bool(rule["is_permit"])
+        return None
 
     def permits(self, sw_if_index, src, dst, proto=1, dport=0):
         """Evaluate the bound ACL first-match, like the ACL plugin input arc."""
         self._acl_init()
         for acl_index in self.acl_bindings.get(sw_if_index, []):
-            for rule in self.acls[acl_index]["r"]:
-                if ipaddress.ip_address(src) not in ipaddress.ip_network(rule["src_prefix"]):
-                    continue
-                if ipaddress.ip_address(dst) not in ipaddress.ip_network(rule["dst_prefix"]):
-                    continue
-                if rule["proto"] not in (0, proto):
-                    continue
-                if rule["proto"] in (6, 17) and not rule["dstport_or_icmpcode_first"] <= dport <= rule["dstport_or_icmpcode_last"]:
-                    continue
-                return bool(rule["is_permit"])
+            match = self._first_match(acl_index, src, dst, proto, dport)
+            if match is not None:
+                return match
         return False
 
 
-class FakeVppApi(FakeAclMixin):
+class FakeAbfMixin:
+    """ABF plugin calls; ``steers`` evaluates attachments like abf-input-ip4."""
+
+    def _abf_init(self):
+        if not hasattr(self, "abf_policies"):
+            self.abf_policies: dict[int, dict] = {}
+            self.abf_attachments: list[dict] = []
+
+    @staticmethod
+    def _hop(path):
+        return str(ipaddress.ip_address(path["nh"]["address"]["ip4"]))
+
+    def abf_policy_dump(self):
+        self._abf_init()
+        self.calls.append("abf_policy_dump")
+        return [SimpleNamespace(policy=SimpleNamespace(
+            policy_id=pid, acl_index=p["acl_index"], n_paths=len(p["hops"]),
+            paths=[SimpleNamespace(nh=SimpleNamespace(address=SimpleNamespace(ip4=ipaddress.ip_address(h)))) for h in p["hops"]]))
+            for pid, p in sorted(self.abf_policies.items())]
+
+    def abf_policy_add_del(self, is_add, policy):
+        self._abf_init()
+        self.calls.append("abf_policy_add_del")
+        pid = policy["policy_id"]
+        if is_add:
+            if policy["acl_index"] not in self.acls:
+                return SimpleNamespace(retval=-6)
+            entry = self.abf_policies.setdefault(pid, {"acl_index": policy["acl_index"], "hops": []})
+            entry["hops"] += [self._hop(p) for p in policy["paths"] if self._hop(p) not in entry["hops"]]
+            return SimpleNamespace(retval=0)
+        if pid not in self.abf_policies:
+            return SimpleNamespace(retval=-6)
+        if any(a["policy_id"] == pid for a in self.abf_attachments):
+            return SimpleNamespace(retval=-142)
+        entry = self.abf_policies[pid]
+        entry["hops"] = [h for h in entry["hops"] if h not in {self._hop(p) for p in policy["paths"]}]
+        if not entry["hops"]:
+            del self.abf_policies[pid]
+        return SimpleNamespace(retval=0)
+
+    def abf_itf_attach_dump(self):
+        self._abf_init()
+        self.calls.append("abf_itf_attach_dump")
+        return [SimpleNamespace(attach=SimpleNamespace(**a)) for a in self.abf_attachments]
+
+    def abf_itf_attach_add_del(self, is_add, attach):
+        self._abf_init()
+        self.calls.append("abf_itf_attach_add_del")
+        key = (attach["policy_id"], attach["sw_if_index"], bool(attach["is_ipv6"]))
+        present = [a for a in self.abf_attachments if (a["policy_id"], a["sw_if_index"], a["is_ipv6"]) == key]
+        if is_add:
+            if attach["policy_id"] not in self.abf_policies or present:
+                return SimpleNamespace(retval=-6)
+            self.abf_attachments.append({**attach, "is_ipv6": bool(attach["is_ipv6"])})
+        else:
+            if not present:
+                return SimpleNamespace(retval=-6)
+            self.abf_attachments.remove(present[0])
+        return SimpleNamespace(retval=0)
+
+    def steers(self, sw_if_index, src, dst, proto=6, dport=80):
+        """Next hop ABF would send this packet to, or None (normal forwarding)."""
+        self._abf_init()
+        for attach in sorted((a for a in self.abf_attachments if a["sw_if_index"] == sw_if_index and not a["is_ipv6"]),
+                             key=lambda a: a["priority"]):
+            policy = self.abf_policies[attach["policy_id"]]
+            if self._first_match(policy["acl_index"], src, dst, proto, dport):
+                return policy["hops"][0]
+        return None
+
+
+class FakeVppApi(FakeAclMixin, FakeAbfMixin):
     def __init__(self) -> None:
         self.interfaces: dict[int, dict] = {}
         self.addresses: dict[int, set[str]] = {}

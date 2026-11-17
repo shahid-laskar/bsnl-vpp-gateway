@@ -84,7 +84,10 @@
       ],
       "authenticated_destinations": [
         "192.0.2.0/24"
-      ]
+      ],
+      "http_redirect": {
+        "next_hop": "198.51.100.2"
+      }
     }
   },
   "qos_profiles": {}
