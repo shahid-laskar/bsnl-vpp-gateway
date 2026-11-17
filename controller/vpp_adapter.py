@@ -15,10 +15,11 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .interfaces import VppInterfaceProvisioner, phase4_object_keys
+from .interfaces import VppInterfaceProvisioner, interface_plans, phase4_object_keys
 from .policy import VppPolicyEnforcer, tenant_policy
 from .validation import validate_desired_state
 
@@ -38,6 +39,13 @@ def load_snapshot(path: str | Path = DEFAULT_SNAPSHOT) -> dict[str, Any]:
     return snapshot
 
 
+class VppStartupPending(RuntimeError):
+    """VPP is (re)connected but its own startup config has not finished, so
+    the controller must not write yet (it would race ``exec bsnl-lab.cli``)."""
+
+    startup_pending = True
+
+
 def _default_client_factory(socket: str) -> Any:
     from vpp_papi import VPPApiClient
     return VPPApiClient(server_address=socket, use_socket=True, async_thread=False)
@@ -46,7 +54,8 @@ def _default_client_factory(socket: str) -> Any:
 class VppApiAdapter:
     def __init__(self, socket: str = "/run/vpp/api.sock", snapshot_path: str | Path = DEFAULT_SNAPSHOT,
                  enable_writes: bool = False, port_map: dict[str, str] | None = None,
-                 client_factory: Callable[[str], Any] = _default_client_factory) -> None:
+                 client_factory: Callable[[str], Any] = _default_client_factory,
+                 settle_seconds: float = 0.0, clock: Callable[[], float] = time.monotonic) -> None:
         self.socket = socket
         self.snapshot = load_snapshot(snapshot_path)
         self.enable_writes = enable_writes
@@ -60,6 +69,13 @@ class VppApiAdapter:
         self.last_apply_writes: list[str] = []
         self.policy_applied: dict[str, set[str]] | None = None
         self.policy_error: str | None = None
+        # Restart recovery: every successful connect bumps connect_count (the
+        # reconciler's watch loop re-applies on a change) and opens a settle
+        # window in which writes wait for VPP's own startup config.
+        self.settle_seconds = settle_seconds
+        self._clock = clock
+        self.connect_count = 0
+        self._settle_since: float | None = None
         # vpp_papi clients are not thread-safe; API threads and the reconciler share one.
         self._lock = threading.RLock()
 
@@ -87,6 +103,11 @@ class VppApiAdapter:
             self.disconnect(keep_error=True)
             raise CrcMismatchError(self.error)
         self.crc_ok, self.error = True, None
+        self.connect_count += 1
+        self._settle_since = self._clock()
+        # A new connection may be a new VPP: the old one's policy is gone
+        # until the next successful apply.
+        self.policy_applied = None
 
     def disconnect(self, keep_error: bool = False) -> None:
         if self.client is not None:
@@ -111,6 +132,48 @@ class VppApiAdapter:
         except CrcMismatchError:
             return False
         return self.connected and self.crc_ok
+
+    def liveness(self) -> int:
+        """Ping (reconnecting if needed) and return the connection counter;
+        a change means VPP restarted or the API transport was re-established."""
+        with self._lock:
+            self.ensure_connected()
+            return self.connect_count
+
+    def startup_settled(self, desired_state: dict[str, Any]) -> bool:
+        """True once VPP's startup config has finished after a (re)connect.
+
+        VPP accepts API connections before it runs
+        ``unix { exec bsnl-lab.cli }``. Writing in that gap races the script:
+        the controller would create the sub-interface or ACL first and the
+        script's later commands would fail or take the wrong ACL index. The
+        script's last command binds the static pre-auth ACL, so "every desired
+        tenant sub-interface exists and has an input ACL" means it finished.
+        A VPP without such a script never gets there; after
+        ``settle_seconds`` the controller writes anyway.
+        """
+        if self._settle_since is None:
+            return True
+        ready = False
+        try:
+            plans = interface_plans(desired_state, self.port_map)
+            found = VppInterfaceProvisioner(self.client.api, enable_writes=False, port_map=self.port_map).discover(plans)
+            ready = len(found) == len(plans) and all(self._input_acl_bound(index) for index in found.values())
+        except Exception as exc:  # parent interface not created yet, transport error
+            LOG.debug("VPP startup not settled: %s", exc)
+        waited = self._clock() - self._settle_since
+        if not (ready or waited >= self.settle_seconds):
+            return False
+        if ready:
+            LOG.info("VPP startup config finished %.1f s after connect", waited)
+        else:
+            LOG.warning("VPP startup config not detected after %.1f s; writing anyway", waited)
+        self._settle_since = None
+        return True
+
+    def _input_acl_bound(self, sw_if_index: int) -> bool:
+        bound = next(iter(self.client.api.acl_interface_list_dump(sw_if_index=sw_if_index)), None)
+        return bound is not None and int(bound.n_input) >= 1
 
     # Contract ----------------------------------------------------------------------------
     def capabilities(self) -> dict[str, Any]:
@@ -168,6 +231,8 @@ class VppApiAdapter:
             if not self.ensure_connected():
                 self.policy_applied = None
                 raise RuntimeError(f"VPP API unavailable: {self.error}")
+            if not self.startup_settled(desired_state):
+                raise VppStartupPending("VPP startup config still running; not writing yet")
             provisioner = VppInterfaceProvisioner(self.client.api, enable_writes=True, port_map=self.port_map)
             keys = provisioner.apply(desired_state)
             writes = list(provisioner.writes)

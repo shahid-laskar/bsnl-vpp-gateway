@@ -6,7 +6,8 @@ import logging
 
 from .api import serve
 from .config import load_json
-from .reconcile import LabAdapter, Reconciler, reconcile
+from .keys import desired_object_keys
+from .reconcile import LabAdapter, ReconcileResult, Reconciler, reconcile
 from .state import merge_topology
 from .store import DesiredStateStore
 from .subscribers import SubscriberLifecycle
@@ -28,7 +29,8 @@ def build_adapter(args: argparse.Namespace):
     if not (args.observe_vpp or args.enable_vpp_writes):
         return LabAdapter()
     from .vpp_adapter import CrcMismatchError, VppApiAdapter
-    adapter = VppApiAdapter(args.vpp_socket, snapshot_path=args.api_crc_snapshot, enable_writes=args.enable_vpp_writes, port_map=parse_port_map(args.port_map))
+    adapter = VppApiAdapter(args.vpp_socket, snapshot_path=args.api_crc_snapshot, enable_writes=args.enable_vpp_writes, port_map=parse_port_map(args.port_map),
+                            settle_seconds=args.vpp_startup_settle_seconds)
     try:
         adapter.connect()
     except CrcMismatchError:
@@ -54,6 +56,9 @@ def main() -> int:
     parser.add_argument("--vpp-socket", default="/run/vpp/api.sock")
     parser.add_argument("--api-crc-snapshot", default=None)
     parser.add_argument("--reconcile-interval", type=float, default=30.0)
+    parser.add_argument("--vpp-watch-interval", type=float, default=1.0, help="VPP liveness check; re-applies right after a VPP restart (0 disables)")
+    parser.add_argument("--vpp-startup-settle-seconds", type=float, default=10.0,
+                        help="after a (re)connect, longest wait for VPP's startup config before writing")
     parser.add_argument("--kea-lease-file", default=None, help="Kea memfile lease CSV; enables lease -> SubscriberBinding sync (P5-T4)")
     parser.add_argument("--lease-poll-interval", type=float, default=1.0)
     parser.add_argument("--unbound-views-file", default=None, help="generated Unbound include for authenticated subscribers; enables split DNS (P5-T5)")
@@ -68,7 +73,16 @@ def main() -> int:
     desired = merge_topology(store, load_json(args.desired_state), lifecycle)
     expired = lifecycle.expire()
     adapter = build_adapter(args)
-    result = reconcile(adapter, store.read() or desired)
+    try:
+        result = reconcile(adapter, store.read() or desired)
+    except RuntimeError as exc:
+        if not getattr(exc, "startup_pending", False):
+            raise
+        # Started while VPP is still running its startup config; the
+        # reconciler's watch loop applies once it has finished.
+        LOG.info("%s", exc)
+        state = store.read() or desired
+        result = ReconcileResult([], adapter.observed_state(), desired_object_keys(state))
     print(json.dumps({
         "gateway_revision": (store.read() or {}).get("gateway_revision"),
         "capabilities": adapter.capabilities(),
@@ -81,7 +95,8 @@ def main() -> int:
         dns_views = UnboundViewSync(args.unbound_views_file)
         dns_views.sync(store.read() or {})
     if args.serve:
-        reconciler = Reconciler(store, lifecycle, adapter, args.reconcile_interval, dns_views=dns_views)
+        reconciler = Reconciler(store, lifecycle, adapter, args.reconcile_interval, dns_views=dns_views,
+                                watch_interval=args.vpp_watch_interval)
         reconciler.start()
         if args.kea_lease_file:
             from .bindings import LeaseWatcher
