@@ -1,0 +1,158 @@
+# Portal -> VPP end-to-end login (remediation next-work 1), 2026-11-17
+# portal vpp-setup 9d50798 + compose secrets mount; workers rebuilt; router instance 9 dataplane_type=vpp
+# controller: mTLS client CN bsnl-vpp-portal-client allowlisted, HMAC on; gateway nft: no SNAT to 10.44.0.209
+
+## run 1: sudo python3 -m tests.lab.portal_e2e --username vpplab1 --password-file <file>
+{
+  "checks": {
+    "dhcp_lease": {
+      "ok": true,
+      "address": "10.9.101.36",
+      "mac": "<random veth MAC>"
+    },
+    "preauth_target_blocked": {
+      "ok": true
+    },
+    "login_page": {
+      "ok": true,
+      "http": 200,
+      "customer_resolved": true
+    },
+    "login_accepted": {
+      "ok": true,
+      "http": 200,
+      "response": {
+        "success": true,
+        "redirect": "/portal/success/"
+      }
+    },
+    "portal_reports_activated": {
+      "ok": true,
+      "seconds_after_login": 1.04,
+      "status": {
+        "activated": true,
+        "authenticated": true
+      }
+    },
+    "authorized_target_reachable": {
+      "ok": true,
+      "seconds_after_login": 1.66
+    },
+    "logout_accepted": {
+      "ok": true,
+      "http": 200
+    },
+    "target_blocked_after_logout": {
+      "ok": true,
+      "seconds_after_logout": 1.51
+    }
+  },
+  "ok": true
+}
+
+## run 2: sudo python3 -m tests.lab.portal_e2e --username vpplab1 --password-file <file>
+{
+  "checks": {
+    "dhcp_lease": {
+      "ok": true,
+      "address": "10.9.101.37",
+      "mac": "<random veth MAC>"
+    },
+    "preauth_target_blocked": {
+      "ok": true
+    },
+    "login_page": {
+      "ok": true,
+      "http": 200,
+      "customer_resolved": true
+    },
+    "login_accepted": {
+      "ok": true,
+      "http": 200,
+      "response": {
+        "success": true,
+        "redirect": "/portal/success/"
+      }
+    },
+    "portal_reports_activated": {
+      "ok": true,
+      "seconds_after_login": 0.66,
+      "status": {
+        "activated": true,
+        "authenticated": true
+      }
+    },
+    "authorized_target_reachable": {
+      "ok": true,
+      "seconds_after_login": 1.33
+    },
+    "logout_accepted": {
+      "ok": true,
+      "http": 200
+    },
+    "target_blocked_after_logout": {
+      "ok": true,
+      "seconds_after_logout": 1.51
+    }
+  },
+  "ok": true
+}
+
+## run 3: sudo python3 -m tests.lab.portal_e2e --username vpplab1 --password-file <file>
+{
+  "checks": {
+    "dhcp_lease": {
+      "ok": true,
+      "address": "10.9.101.38",
+      "mac": "<random veth MAC>"
+    },
+    "preauth_target_blocked": {
+      "ok": true
+    },
+    "login_page": {
+      "ok": true,
+      "http": 200,
+      "customer_resolved": true
+    },
+    "login_accepted": {
+      "ok": true,
+      "http": 200,
+      "response": {
+        "success": true,
+        "redirect": "/portal/success/"
+      }
+    },
+    "portal_reports_activated": {
+      "ok": true,
+      "seconds_after_login": 0.64,
+      "status": {
+        "activated": true,
+        "authenticated": true
+      }
+    },
+    "authorized_target_reachable": {
+      "ok": true,
+      "seconds_after_login": 1.29
+    },
+    "logout_accepted": {
+      "ok": true,
+      "http": 200
+    },
+    "target_blocked_after_logout": {
+      "ok": true,
+      "seconds_after_logout": 1.51
+    }
+  },
+  "ok": true
+}
+
+## controller audit (portal events)
+{"ts": "2026-11-17T06:10:02.872016+00:00", "actor": "cert:bsnl-vpp-portal-client", "event": "subscriber.activate", "authorized": true, "gateway_revision": 30, "reason": "activated"}
+{"ts": "2026-11-17T06:10:03.496369+00:00", "actor": "cert:bsnl-vpp-portal-client", "event": "subscriber.deactivate", "authorized": false, "gateway_revision": 31, "reason": "terminate_cause_1"}
+{"ts": "2026-11-17T06:10:14.104599+00:00", "actor": "cert:bsnl-vpp-portal-client", "event": "subscriber.activate", "authorized": true, "gateway_revision": 32, "reason": "activated"}
+{"ts": "2026-11-17T06:10:14.389865+00:00", "actor": "cert:bsnl-vpp-portal-client", "event": "subscriber.deactivate", "authorized": false, "gateway_revision": 33, "reason": "terminate_cause_1"}
+{"ts": "2026-11-17T06:10:24.905808+00:00", "actor": "cert:bsnl-vpp-portal-client", "event": "subscriber.activate", "authorized": true, "gateway_revision": 34, "reason": "activated"}
+{"ts": "2026-11-17T06:10:25.129462+00:00", "actor": "cert:bsnl-vpp-portal-client", "event": "subscriber.deactivate", "authorized": false, "gateway_revision": 35, "reason": "terminate_cause_1"}
+
+## sudo bsnl-vpp-lab-check
+HEALTHY

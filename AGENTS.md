@@ -34,6 +34,7 @@ the remote gateway.
 | VPP host-side WAN | `198.51.100.1/24` |
 | Linux WAN bridge address | `198.51.100.2/24`; Kea and Unbound listen here |
 | Existing portal | `10.44.0.209`; hostname `wifi.bsnl.co.in` |
+| Portal return path | portal host route `10.9.101.0/24 via 10.44.0.207` (runtime only; persist it) |
 
 `ens18` must remain Linux-managed and outside VPP/DPDK. Do not bind the VM NICs
 to `uio_pci_generic` or `vfio-pci`. VPP uses `af_packet` over existing veth
@@ -63,9 +64,11 @@ documented `0x8100` lab fixture unless explicitly re-qualifying it.
   detection, and audit events.
 - Controller API contract v1 (see ADR-007): mTLS with optional client-name
   allowlist, plus HMAC (timestamp + nonce + method + path + Idempotency-Key +
-  body hash) when BSNL_VPP_PORTAL_HMAC_SECRET is configured (not configured in
-  the lab yet: no `/etc/bsnl-vpp-gateway/controller.env`). Responses report
-  `dataplane_enforced`, true only when VPP confirmed the change.
+  body hash) when BSNL_VPP_PORTAL_HMAC_SECRET is configured. The lab has
+  `/etc/bsnl-vpp-gateway/controller.env` (root:vpp 0640, never in git) with the
+  HMAC secret and `BSNL_VPP_ALLOWED_CLIENTS=bsnl-vpp-portal-client`; every POST
+  must be signed. Responses report `dataplane_enforced`, true only when VPP
+  confirmed the change.
 - Controller request bodies are bounded to 1 MiB.
 
 Verified from isolated QinQ namespaces: DHCP lease, DNS mapping, portal HTTP
@@ -196,6 +199,22 @@ sudo unbound-checkconf
 - `unbound-resolvconf.service` is masked: the host keeps systemd-resolved.
 - See ADR-014.
 
+## Portal integration (live since 2026-11-17)
+
+- Portal side (`10.44.0.209`): router `vpp-lab-207` (instance_id 9,
+  `dataplane_type="vpp"`), customer `vpp-lab` (10.9.101.5–105), test user
+  `vpplab1` (password only in `/opt/captive-portal/vpp-secrets/lab-user-password`
+  on the portal host). `VPP_CONTROLLER_*` in the portal `.env`; CA, client
+  cert and key in `/opt/captive-portal/vpp-secrets` (uid 1000, 0400), mounted
+  at `/run/secrets/vpp` in django, workers and beat.
+- The portal identifies router and customer from the subscriber's own address
+  (second octet = router instance), so traffic to 10.44.0.209 must not be
+  SNATed (ADR-012 update).
+- Test: `sudo python3 -m tests.lab.portal_e2e --username vpplab1
+  --password-file FILE` (copy the password from the portal host into a 0600
+  file; it is never passed in argv). The portal rate-limits 5 logins per
+  client IP per 5 min; each run gets a fresh lease, so this rarely matters.
+
 ## State at handoff (2026-11-17)
 
 - Gateway `main` = `origin/main` (pushed 2026-11-17). Portal `vpp-setup` =
@@ -217,13 +236,11 @@ sudo unbound-checkconf
 
 ## Next work (plan order)
 
-1. **Portal -> VPP end to end (step 2 of the 2026-11-16 roadmap).** Provision
-   out-of-band, never committed: portal client certificate, controller
-   `BSNL_VPP_ALLOWED_CLIENTS` and the shared HMAC secret
-   (`/etc/bsnl-vpp-gateway/controller.env` + portal `.env`); apply portal
-   migration `portal.0004`; set `VPP_CONTROLLER_*` settings and switch one
-   lab router to `dataplane_type="vpp"`; then a real login from a QinQ
-   namespace must reach `fully_active` with `dataplane_enforced: true`.
+1. **Portal -> VPP end to end: DONE 2026-11-17** (see "Portal integration").
+   Follow-ups: send the binding MAC with the activation (today the portal
+   fetches it asynchronously after activation); persist the portal host
+   route; the lab reuses the CN `bsnl-vpp-portal-client` certificate issued
+   2026-11-11 by the lab CA (expires 2027-11-11).
 2. **Phase 6 remainder:** HTTP redirector + ABF for tcp/80 (pre-auth HTTP to
    any host -> portal), MACIP enforcement (`mac_enforcement` is `log_only`),
    D-09 ACL vs SVS measurement at 1k/10k subscribers, Unbound reload batching
@@ -251,5 +268,7 @@ sudo unbound-checkconf
   sudo before `git worktree remove`.
 - Lab Kea has no `lease_cmds` hook; `/var/lib/kea` is `_kea 0750`.
 - Remote files must have LF line endings.
+- Some repo files were root-owned (early installs); chowned to shahid on
+  2026-11-17. If an edit fails with EACCES, check `find . ! -user shahid`.
 
 Preserve VyOS behavior and its rollback role during VPP development.

@@ -36,12 +36,19 @@ Evidence lives in `artifacts/` (this repo) and
   (`artifacts/test-reports/2026-11-17-restart-policy-recovery.txt`).
 - Resolver: Unbound 1.19.2 split-horizon views (ADR-014); dnsmasq disabled,
   config kept for rollback.
-- Not yet configured: HMAC secret / client allowlist (`controller.env`), portal
-  routers with `dataplane_type="vpp"`. No subscriber internet path (P7).
+- Portal integration (2026-11-17): `/etc/bsnl-vpp-gateway/controller.env`
+  (root:vpp 0640, not in git) sets `BSNL_VPP_ALLOWED_CLIENTS=bsnl-vpp-portal-client`
+  and the HMAC secret; the portal has a lab router `vpp-lab-207` (instance 9,
+  `dataplane_type="vpp"`) and customer `vpp-lab` (10.9.101.5–105). A real
+  password login from a QinQ namespace reaches `fully_active` with
+  `dataplane_enforced: true` (3/3 runs,
+  `artifacts/test-reports/2026-11-17-portal-e2e.txt`). Portal traffic is no
+  longer SNATed; the portal host routes 10.9.101.0/24 via 10.44.0.207 (ADR-012).
+  No subscriber internet path (P7).
 - Backups and rollbacks: `/root/bsnl-p5-install-20261116T111529.tgz`,
   `/root/bsnl-unbound-install-20261116T113548.tgz`,
   `/root/bsnl-vpp-controller.service.pre-writes`,
-  `/root/bsnl-lab.cli.pre-hwaddr`.
+  `/root/bsnl-lab.cli.pre-hwaddr`, `/root/portal-path.nft.pre-nosnat-20261117`.
 
 ## Branches
 
@@ -68,7 +75,7 @@ Everything is on gateway `main` and portal `vpp-setup`, both pushed to
 | Contract suite against fake, kernel/VyOS and VPP adapters | TESTED | `test_adapter_contract.py` (portal), `docs/vpp/evidence/2026-11-13-django-tests.txt` |
 | Zero direct dataplane-client use outside adapters | TESTED (allowlist) | `test_dataplane_boundary.py`; 3 guarded VyOS-only provisioning modules allowlisted |
 | Every router path dataplane-aware | TESTED | `NetworkControlService.for_router`, `dataplane.py`; skip/guard tests |
-| `dataplane_type` in DB (migration `portal.0004`) | OPEN | **Not applied on the dev portal** — apply before any VPP router or container restart |
+| `dataplane_type` in DB (migration `portal.0004`) | VERIFIED (2026-11-17) | applied on the dev portal; Celery workers and beat rebuilt from `vpp-setup` 2026-11-17 |
 | R-21 Redis broker eviction | TESTED (config) | `volatile-lru` in compose files; takes effect when Redis is recreated |
 | R-22 NOC/admin source-IP | TESTED | middleware uses nginx `X-Real-IP`; spoofing test |
 | Usage-counter semantics doc (P1-T7) | OPEN | |
@@ -88,6 +95,7 @@ Everything is on gateway `main` and portal `vpp-setup`, both pushed to
 |---|---|---|
 | Desired-state schema v2 + validation | TESTED | `config/schema/desired-state.schema.json`, `test_phase3.py` |
 | API contract v1, mTLS + HMAC (nonce, replay) | VERIFIED (loopback) | `artifacts/test-reports/2026-11-13-contract-e2e.txt` |
+| Portal -> controller with a real login (mTLS client allowlist + HMAC) | VERIFIED (2026-11-17) | `tests/lab/portal_e2e.py`: DHCP lease, pre-auth target blocked, portal password login, portal reports activated 0.64–1.04 s after login, 192.0.2.1 reachable 1.29–1.66 s, blocked again 1.51 s after logout; audit actor `cert:bsnl-vpp-portal-client`; `artifacts/test-reports/2026-11-17-portal-e2e.txt` |
 | Atomic store, audit with actor/ts/revision | TESTED | `controller/store.py`, `test_step4.py` |
 | Topology merged at boot; subscribers survive restart | TESTED | `controller/state.py`, `test_step4.py` |
 | Expiry enforced while serving | TESTED | `Reconciler`, `test_reconciler_expires_sessions_while_running` |
@@ -113,7 +121,7 @@ Everything is on gateway `main` and portal `vpp-setup`, both pushed to
 | DORA via VPP DHCP proxy → Kea | VERIFIED (2026-11-11) | ADR-005; `controller/dhcp_qualification.py` |
 | Option 114 = RFC 8908 API URI | VERIFIED (2026-11-16) | Kea reinstalled; OFFER/ACK carry `https://wifi.bsnl.co.in/portal/captive-api/`; `dhcp_qualification` all 5 checks pass (its capture filter now matches QinQ frames); `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt` |
 | Lease → SubscriberBinding history (P5-T4) | VERIFIED (2026-11-16) | ADR-013; 4 lab DORAs opened 4 bindings, an expired lease closed at its expiry (`lease_expired`), `/v1/bindings` returns current and historical bindings over mTLS; `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt` |
-| MAC from bindings for VPP routers (P5-T6) | TESTED (portal) / VERIFIED (controller API) | `GET /v1/bindings`; portal `resolve_subscriber_mac`. VPP neighbour table as secondary source: OPEN |
+| MAC from bindings for VPP routers (P5-T6) | VERIFIED (2026-11-17) | portal worker logs `MAC ... from VPP lease binding` and stores it on the session. It is fetched asynchronously and lands after activation, so the activate call carries no MAC (mismatch audit never fires): OPEN. VPP neighbour table as secondary source: OPEN |
 | Lease → binding latency p95 ≤ 2 s | VERIFIED (lab, 4 samples) | 0.59–1.64 s (audit ts − lease CLTT), `artifacts/test-reports/2026-11-16-p5-lab-bindings.txt`; not a load test |
 | Split DNS by authentication state (P5-T5) | VERIFIED (2026-11-16) | ADR-014: Unbound views; pre-auth captive answers + REFUSED for other names, authenticated /32 view with real answers, controller-driven reload (57–59 ms incl. activation); bypass suite DNS checks; `artifacts/test-reports/2026-11-16-p5-split-dns.txt` |
 | Resolver choice D-19, scale | PROVISIONAL | Unbound chosen for the lab; throughput and reload cost at churn not measured |
@@ -140,6 +148,8 @@ Do not open an internet path for subscribers before P7 (NAT, IPDR attribution).
 
 ## Known lab exceptions
 
-- ADR-012: subscriber→portal traffic is SNATed out of management NIC `ens18`.
+- ADR-012: subscriber→portal traffic leaves through management NIC `ens18`
+  (not SNATed to the portal since 2026-11-17; the portal host has a runtime
+  route 10.9.101.0/24 via 10.44.0.207 that is not yet persistent).
 - The portal dev instance runs with Django `DEBUG = True` (exposes debug pages);
   turn it off.

@@ -7,6 +7,10 @@ table ip bsnl_vpp_portal {
 
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;
+    # The portal must see the subscriber address (it derives router and customer
+    # from it), so traffic to the portal is not SNATed; the portal host routes
+    # 10.9.101.0/24 back via 10.44.0.207 (ADR-012).
+    oifname "ens18" ip saddr 10.9.101.0/24 ip daddr 10.44.0.209 counter accept
     oifname "ens18" ip saddr 10.9.101.0/24 ip daddr 10.44.0.0/22 counter snat to 10.44.0.207
   }
 }
