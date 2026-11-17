@@ -12,7 +12,7 @@ table ip bsnl_vpp_portal {
   # captive VRF's default route sends all pre-auth traffic here, ADR-017).
   chain input {
     type filter hook input priority filter; policy accept;
-    iifname "br-wan" ip saddr 10.9.101.0/24 ip daddr 198.51.100.2 udp dport 53 accept
+    iifname "br-wan" ip saddr 10.9.101.0/24 ip daddr 198.51.100.2 udp dport { 53, 67 } accept
     iifname "br-wan" ip saddr 10.9.101.0/24 ip daddr 198.51.100.2 tcp dport { 53, 8080 } accept
     iifname "br-wan" ip saddr 10.9.101.0/24 counter drop
   }

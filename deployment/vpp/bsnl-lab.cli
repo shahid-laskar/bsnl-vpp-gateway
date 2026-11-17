@@ -29,11 +29,17 @@ set interface state host-vpp-access.101 up
 
 comment { Captive VRF 101: portal, resolver and a default route to the gateway host, }
 comment { whose nftables redirects tcp/80 to the redirector and drops the rest (ADR-015). }
-ip route add 10.44.0.209/32 table 101 via 198.51.100.2 next-hop-table 0
-ip route add 198.51.100.2/32 table 101 via 198.51.100.2 next-hop-table 0
-ip route add 0.0.0.0/0 table 101 via 198.51.100.2 next-hop-table 0
-comment { Internet VRF (table 0) back to the tenant: replies, DHCP to the relay address }
-ip route add 10.9.101.0/24 via ip4-lookup-in-table 101
+comment { Attached paths via host-vpp-wan: a recursive "via 198.51.100.2 next-hop-table 0" }
+comment { for 198.51.100.2/32 itself resolved to drop (pre-auth DNS lost, 2026-11-17). }
+ip route add 10.44.0.209/32 table 101 via 198.51.100.2 host-vpp-wan
+ip route add 198.51.100.2/32 table 101 via 198.51.100.2 host-vpp-wan
+ip route add 0.0.0.0/0 table 101 via 198.51.100.2 host-vpp-wan
+comment { Internet VRF (table 0) back to the tenant as an attached route: VPP's local }
+comment { source check needs a real adjacency (a lookup-in-table route made ip4-receive }
+comment { drop authenticated pings to 192.0.2.1). The relay address 10.9.101.1 is }
+comment { looked up in VRF 101 so Kea's replies to giaddr stay local to VPP. }
+ip route add 10.9.101.0/24 via host-vpp-access.101
+ip route add 10.9.101.1/32 via ip4-lookup-in-table 101
 
 comment { DHCP relay to Kea on br-wan (was bsnl-vpp-dhcp-proxy); clients are in VRF 101 }
 set dhcp proxy server 198.51.100.2 src-address 198.51.100.1 rx-fib-id 101 server-fib-id 0
