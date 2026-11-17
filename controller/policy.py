@@ -220,9 +220,15 @@ def _get(obj: Any, key: str) -> Any:
 
 
 def fib_path_ip4(next_hop: str) -> dict[str, Any]:
-    """vl_api_fib_path_t for a recursive IPv4 next hop in table 0."""
+    """vl_api_fib_path_t for a recursive IPv4 next hop in table 0.
+
+    vpp_papi packs fixed-size arrays strictly: ``label_stack`` (16 entries)
+    must be present even with ``n_labels`` 0.
+    """
+    no_label = {"is_uniform": 0, "label": 0, "ttl": 0, "exp": 0}
     return {"sw_if_index": 0xFFFFFFFF, "table_id": 0, "rpf_id": 0, "weight": 1, "preference": 0,
-            "type": 0, "flags": 0, "proto": 0, "nh": {"address": {"ip4": next_hop}}, "n_labels": 0}
+            "type": 0, "flags": 0, "proto": 0, "nh": {"address": {"ip4": next_hop}},
+            "n_labels": 0, "label_stack": [dict(no_label) for _ in range(16)]}
 
 
 def path_next_hops(policy: Any) -> list[str]:

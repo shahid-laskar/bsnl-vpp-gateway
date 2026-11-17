@@ -98,6 +98,10 @@ class FakeAbfMixin:
         self._abf_init()
         self.calls.append("abf_policy_add_del")
         pid = policy["policy_id"]
+        for path in policy["paths"]:
+            # vpp_papi refuses to pack a fib_path without its fixed 16-entry label_stack
+            if len(path.get("label_stack", [])) != 16:
+                raise ValueError("Exception while packing fib_path: label_stack must have 16 entries")
         if is_add:
             if policy["acl_index"] not in self.acls:
                 return SimpleNamespace(retval=-6)
