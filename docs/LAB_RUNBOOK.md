@@ -18,9 +18,9 @@ Tenant fixture: exact-match QinQ outer `0x8100`/200, inner `0x8100`/101,
 | Unit / file | Role |
 |---|---|
 | `bsnl-vpp-lab-links` | Linux bridges and veths; `vpp.service` requires it |
-| `vpp` + `/etc/vpp/bsnl-lab.cli` | VPP applies af_packet, L3 fixture, QinQ, DHCP proxy and the static pre-auth ACL itself at every start (no vppctl race) |
-| `bsnl-vpp-portal-path` | Lab nftables: forward to the portal (no SNAT to .209, ADR-012), pre-auth HTTP redirect to :8080 and drop of any other forwarded subscriber traffic (ADR-015) |
-| `bsnl-vpp-redirector` | Captive HTTP redirector on 198.51.100.2:8080: 302 to the portal login for HTTP that VPP's ABF policy steers to the host (ADR-015) |
+| `vpp` + `/etc/vpp/bsnl-lab.cli` | VPP applies af_packet, L3 fixture, QinQ, captive VRF 101 and its routes, table-0 return routes, DHCP proxy (rx-fib 101) and the static pre-auth ACL itself at every start (no vppctl race). Plugins: `startup.conf.lab` allow-list (incl. `svs_plugin`) |
+| `bsnl-vpp-portal-path` | Lab nftables: forward to the portal (no SNAT to .209, ADR-012), pre-auth HTTP redirect to :8080, drop of any other forwarded subscriber traffic, input limited to DNS/DHCP/:8080 (ADR-015, ADR-017) |
+| `bsnl-vpp-redirector` | Captive HTTP redirector on 198.51.100.2:8080: 302 to the portal login for pre-auth HTTP that reaches the host (captive VRF default route; ABF in `acl` mode) (ADR-015) |
 | `isc-kea-dhcp4-server` | DHCP on `br-wan` |
 | `unbound` + `/etc/unbound/unbound.conf.d/bsnl-vpp-lab.conf` | Split-horizon DNS on 198.51.100.2 (ADR-014); per-subscriber views in `/etc/unbound/bsnl/authenticated.conf`, written by the controller. dnsmasq is disabled (rollback only) |
 | `bsnl-vpp-controller` | API on 10.44.0.207:8787 (mTLS + HMAC), store `/var/lib/bsnl-vpp-gateway/controller.sqlite3`; secrets in `/etc/bsnl-vpp-gateway/controller.env`; reads Kea leases (`SupplementaryGroups=_kea`) into the `bindings` table every second (ADR-013) |

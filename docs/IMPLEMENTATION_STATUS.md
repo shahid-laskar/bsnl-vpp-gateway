@@ -1,6 +1,6 @@
 # BSNL VPP Gateway — Implementation Status
 
-Updated: 2026-11-17 (remediation steps 1–6, Phase 5 P5-T4/T5/T6, VPP writes and restart recovery on `main`, pushed; lab runs done).
+Updated: 2026-11-17 end of session (remediation steps 1–6, Phase 5, portal E2E, Phase 6 HTTP redirect + MAC/IP enforcement, D-09 = SVS; all on `main`, pushed, live in the lab).
 Plan: `/opt/captive-portal/captive-portal-multitenant/docs/vpp/FINAL_IMPLEMENTATION_PLAN.md`.
 
 This is a **development lab** on Ubuntu VM `10.44.0.207` (VPP 26.10 over
@@ -29,13 +29,15 @@ Evidence lives in `artifacts/` (this repo) and
   healthy 2–3 s after `systemctl restart vpp`
   (`artifacts/test-reports/2026-11-16-restart-recovery-5.txt`).
 - Controller: unit from `main` with `--observe-vpp --enable-vpp-writes`,
-  Kea lease sync and Unbound view sync. It owns the tenant sub-interface and
-  tagged ACL; static ACL 0 is unbound while it runs. After a VPP restart it
+  Kea lease sync and Unbound view sync. It owns the tenant sub-interface,
+  the static tenant ACL, the SVS table and entries, and the MAC/IP
+  classifier chain; static ACL 0 is unbound while it runs. After a VPP restart it
   re-applies within ~2.5 s of VPP's startup config; authenticated subscribers
   are back in 3.8–5.0 s
   (`artifacts/test-reports/2026-11-17-restart-policy-recovery.txt`).
-- Pre-auth HTTP redirect (ADR-015, 2026-11-17): ABF policy on the tenant
-  sub-interface + `bsnl-vpp-redirector` on 198.51.100.2:8080.
+- Pre-auth HTTP redirect (ADR-015, 2026-11-17): `bsnl-vpp-redirector` on
+  198.51.100.2:8080 behind an nft redirect; with SVS the captive VRF default
+  route brings the traffic to the host (ABF only in `authorization: acl`).
 - Authorization (ADR-017, 2026-11-17): SVS; tenant in captive VRF 101,
   SVS table 1101, static tenant ACL; ABF unused in this mode.
 - MAC/IP enforcement (ADR-016, 2026-11-17): lab tenant `mac_enforcement:

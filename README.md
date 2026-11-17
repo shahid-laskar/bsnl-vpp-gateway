@@ -13,7 +13,13 @@ Contents:
 
 - `controller/`: desired state, contract-v1 API (mTLS + HMAC), SQLite store
   and audit, subscriber lifecycle, CRC-pinned VPP adapter, QinQ provisioning,
-  tenant ACL policy, host-service rendering, lab qualification and bypass tools.
+  subscriber authorization with SVS (ADR-017; ACL candidate kept for
+  rollback), MAC/IP enforcement from DHCP lease bindings (ADR-016), captive
+  HTTP redirector (ADR-015), lease bindings, split-DNS views, host-service
+  rendering, lab qualification and bypass tools.
+- `tests/`: unit tests against an in-memory VPP fake; `tests/lab/`: root-run
+  lab tests (portal E2E, restart recovery, signed controller client).
+- `tools/`: API CRC snapshot; `d09_bench.py` + `d09/` (throw-away bench VPP).
 - `deployment/`: VPP startup profile and `bsnl-lab.cli`, systemd units, Kea,
   Unbound split DNS (dnsmasq kept for rollback), nftables, install and
   health-check scripts.
